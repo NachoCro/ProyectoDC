@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% macro diff_cell(current, proposed) %}
+  {% if current == proposed %}
+    <td class="dc dc--same">{{ current or '—' }}</td>
+  {% elif not current and proposed %}
+    <td class="dc dc--old"><del class="dc__del">—</del></td>
+    <td class="dc dc--new"><ins class="dc__ins">{{ proposed }}</ins></td>
+  {% elif current and not proposed %}
+    <td class="dc dc--old"><del class="dc__del">{{ current }}</del></td>
+    <td class="dc dc--new"><ins class="dc__ins">—</ins></td>
+  {% else %}
+    <td class="dc dc--old"><del class="dc__del">{{ current }}</del></td>
+    <td class="dc dc--new"><ins class="dc__ins">{{ proposed }}</ins></td>
+  {% endif %}
+{% endmacro %}
+
+{% macro row(label, current, proposed) %}
+  <tr>
+    <th class="dc__label">{{ label }}</th>
+    {{ diff_cell(current, proposed) }}
+  </tr>
+{% endmacro %}
+
+{% set changes = namespace(count=0) %}
+
+<div class="diff-page">
+  <div class="diff-header">
+    <h1 class="diff-header__title">
+      {{ product.nombre or 'Producto #' ~ product.id_prestashop }}
+      {% if icecat and icecat.get('_score') %}
+        <span class="diff-header__score">Coincidencia: {{ '%.0f'|format(icecat['_score'] * 100) }}%</span>
+      {% endif %}
+    </h1>
+    <div class="diff-header__meta">
+      <span>ID: <strong>{{ product.id_prestashop }}</strong></span>
+      <span>EAN: <strong>{{ product.ean or '—' }}</strong></span>
+      <span>MPN: <strong>{{ product.mpn or '—' }}</strong></span>
+      {% if icecat and icecat.get('_ean') %}
+        <span class="diff-header__tag diff-header__tag--icecat">Icecat EAN: {{ icecat['_ean'] }}</span>
+      {% endif %}
+      {% if product.subcat_name %}
+        <span>Categoría: <strong>{{ product.subcat_name }}</strong></span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not icecat %}
+    <div class="diff-page__empty">
+      <p>No hay propuesta Icecat pendiente para este producto.</p>
+
+      {# ── Manual URL enrichment ─────────────────────────────── #}
+      <div class="diff-manual-url">
+        {% if product.icecat_not_found %}
+          <p class="diff-manual-url__hint">
+            Icecat no encontró este producto. Ingresá una URL oficial del fabricante para enriquecerlo manualmente.
+          </p>
+        {% else %}
+          <p class="diff-manual-url__hint">
+            Ingresá una URL oficial del fabricante para enriquecer este producto.
+          </p>
+        {% endif %}
+        <form method="post" action="{{ url_for('scrape_url', pid=product.id_prestashop) }}"
+              class="diff-manual-url__form" id="scrapeForm">
+          <input type="url" name="url" placeholder="https://www.samsung.com/us/tvs/..." required
+                 class="diff-manual-url__input" id="scrapeUrl">
+          <button type="submit" class="btn btn--scrape btn--lg">🔍 Scrapear URL oficial</button>
+        </form>
+      </div>
+
+      <form method="post" action="{{ url_for('re_sync', pid=product.id_prestashop) }}"
+            onsubmit="return confirm('¿Forzar re-consulta a Icecat?')">
+        <button class="btn btn--sync">🔄 Re-sincronizar con Icecat</button>
+      </form>
+    </div>
+  {% else %}
+    {% set s = namespace(changed=false) %}
+    {% for label, current, proposed in [
+      ('Marca',      product.marca,  icecat.get('marca')),
+      ('Modelo',     product.modelo, icecat.get('modelo')),
+    ] %}
+      {% if current != proposed %}{% set s.changed = true %}{% endif %}
+    {% endfor %}
+    {% set has_diff = s.changed %}
+
+    {# ================================================================ #}
+    {#  BANNER                                                            #}
+    {# ================================================================ #}
+    <div class="diff-banner {{ 'diff-banner--changed' if has_diff else 'diff-banner--clean' }}">
+      <span class="diff-banner__icon">{{ '🔄' if has_diff else '✅' }}</span>
+      <span class="diff-banner__text">
+        {% if has_diff %}
+          Este producto tiene cambios pendientes de publicar.
+        {% else %}
+          Los datos coinciden con Icecat — solo falta publicar.
+        {% endif %}
+      </span>
+    </div>
+
+    {# ================================================================ #}
+    {#  IMAGE PREVIEW                                                    #}
+    {# ================================================================ #}
+    {% set img_url = icecat.get('imagen_url') or product.imagen_url %}
+    {% if img_url %}
+    <div class="diff-image">
+      <div class="diff-image__preview">
+        <img src="{{ img_url }}" alt="{{ product.nombre or '' }}"
+             onerror="this.parentElement.innerHTML='<span class=\\'diff-image__placeholder\\'>Imagen no disponible</span>'">
+      </div>
+      <div class="diff-image__info">
+        <span class="diff-image__label">Imagen de Icecat</span>
+        <a href="{{ img_url }}" target="_blank" class="diff-image__link">Abrir en nueva pestaña ↗</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ================================================================ #}
+    {#  DESCRIPTION PREVIEW                                              #}
+    {# ================================================================ #}
+    {% set desc = icecat.get('descripcion') or icecat.get('resumen') or '' %}
+    {% set desc_corta = icecat.get('descripcion_corta') or '' %}
+    {% if desc or desc_corta %}
+    <div class="diff-desc">
+      {% if desc_corta %}
+      <div class="diff-desc__block">
+        <h3 class="diff-desc__title">Descripción corta</h3>
+        <p class="diff-desc__text">{{ desc_corta }}</p>
+      </div>
+      {% endif %}
+      {% if desc %}
+      <div class="diff-desc__block">
+        <h3 class="diff-desc__title">Descripción</h3>
+        <div class="diff-desc__text">{{ desc }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# ================================================================ #}
+    {#  FIELD COMPARISON TABLE                                            #}
+    {# ================================================================ #}
+    <div class="diff-compare">
+      <div class="diff-compare__header">
+        <span class="diff-compare__col diff-compare__col--label">Campo</span>
+        <span class="diff-compare__col diff-compare__col--old">Actual (PrestaShop)</span>
+        <span class="diff-compare__col diff-compare__col--new">Propuesta (Icecat)</span>
+      </div>
+      <table class="diff-compare__table">
+        {{ row('Nombre', product.nombre, icecat.get('title') or icecat.get('Titulo')) }}
+        {{ row('Marca',  product.marca,  icecat.get('marca')) }}
+        {{ row('Modelo', product.modelo, icecat.get('modelo')) }}
+        {{ row('EAN',    product.ean,    icecat.get('_ean') or product.ean) }}
+        {{ row('MPN',    product.mpn,    icecat.get('mpn') or product.mpn) }}
+
+        {# --- Description fields --- #}
+        {% for label, key in [
+          ('Título',              'title'),
+          ('Título (traducido)',  'titulo'),
+          ('Descripción corta',   'descripcion_corta'),
+          ('Descripción',         'descripcion'),
+          ('Resumen',             'resumen'),
+          ('Summary',             'summary'),
+        ] %}
+          {% set val = icecat.get(key) %}
+          {% if val %}
+            <tr>
+              <th class="dc__label">{{ label }}</th>
+              <td class="dc dc--old"><span class="dc__muted">(sin datos locales)</span></td>
+              <td class="dc dc--new">{{ val }}</td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </table>
+    </div>
+
+    {# ================================================================ #}
+    {#  CHARACTERISTICS COMPARISON                                       #}
+    {# ================================================================ #}
+    {% if curr_chars or icecat.get('caracteristicas') %}
+    <div class="diff-section">
+      <h2 class="diff-section__title">
+        Características técnicas
+        {% set cc = curr_chars|list|length %}
+        {% set ic = (icecat.get('caracteristicas') or [])|length %}
+        <span class="diff-section__count">{{ cc }} actuales → {{ ic }} propuestas</span>
+      </h2>
+
+      {# build a lookup of current chars #}
+      {% set curr_map = {} %}
+      {% for c in curr_chars %}
+        {% set _ = curr_map.update({c.nombre_caracteristica: c.valor}) %}
+      {% endfor %}
+
+      {# collect all keys #}
+      {% set prop_chars = icecat.get('caracteristicas') or [] %}
+      {% set all_keys = [] %}
+      {% for k in curr_map.keys() %}
+        {% set _ = all_keys.append(k) %}
+      {% endfor %}
+      {% for ch in prop_chars %}
+        {% if ch.nombre not in all_keys %}
+          {% set _ = all_keys.append(ch.nombre) %}
+        {% endif %}
+      {% endfor %}
+
+      {# build proposed lookup #}
+      {% set prop_map = {} %}
+      {% for ch in prop_chars %}
+        {% set _ = prop_map.update({ch.nombre: ch.valor}) %}
+      {% endfor %}
+
+      <table class="diff-compare__table">
+        {% for key in all_keys %}
+          {% set cv = curr_map.get(key) %}
+          {% set pv = prop_map.get(key) %}
+          {% if cv != pv %}{% set changes.count = changes.count + 1 %}{% endif %}
+          {{ row(key, cv, pv) }}
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    {# ================================================================ #}
+    {#  ACTIONS                                                          #}
+    {# ================================================================ #}
+    <div class="diff-actions">
+      <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
+            onsubmit="return confirmActivate()"
+            class="diff-actions__form">
+        <input type="hidden" name="activate" value="1">
+        <button class="btn btn--activate btn--lg">
+          ✅ Aprobar y activar en PrestaShop
+        </button>
+        <p class="diff-actions__hint">
+          Activa el producto (<strong>active = 1</strong>), actualiza
+          descripción y características, y marca como sincronizado.
+        </p>
+      </form>
+
+      <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
+            onsubmit="return confirmApproval()"
+            class="diff-actions__form">
+        <input type="hidden" name="activate" value="0">
+        <button class="btn btn--approve btn--lg">
+          📝 Aprobar (sin activar)
+        </button>
+        <p class="diff-actions__hint">
+          Solo actualiza descripción y características en PrestaShop.
+          El producto <strong>no se activa</strong>.
+        </p>
+      </form>
+
+      <form method="post" action="{{ url_for('reject', pid=product.id_prestashop) }}"
+            onsubmit="return confirm('¿Descartar la propuesta de Icecat? El producto quedará pendiente para una futura re-consulta.')"
+            class="diff-actions__form">
+        <button class="btn btn--reject btn--lg">✕ Rechazar propuesta</button>
+      </form>
+
+      <form method="post" action="{{ url_for('re_sync', pid=product.id_prestashop) }}"
+            onsubmit="return confirm('¿Forzar re-consulta a Icecat? Se descartarán los datos actuales.')"
+            class="diff-actions__form">
+        <button class="btn btn--sync btn--lg">🔄 Re-sincronizar desde Icecat</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+function confirmApproval() {
+  var msg = '¿Aprobar (sin activar)?\n\n'
+          + '• Actualizar descripción\n'
+          + '• Escribir características técnicas\n'
+          + '• Marcar como sincronizado\n'
+          + '• El producto NO se activa en PrestaShop\n\n'
+          + '¿Confirmar?';
+  return confirm(msg);
+}
+function confirmActivate() {
+  var msg = '¿Aprobar y activar en PrestaShop?\n\n'
+          + '• Activar producto (active = 1)\n'
+          + '• Actualizar descripción\n'
+          + '• Escribir características técnicas\n'
+          + '• Marcar como sincronizado\n\n'
+          + '¿Confirmar?';
+  return confirm(msg);
+}
+
+// Manual URL scrape form
+var scrapeForm = document.getElementById('scrapeForm');
+if (scrapeForm) {
+  scrapeForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = scrapeForm.querySelector('button[type="submit"]');
+    var url = scrapeForm.querySelector('input[name="url"]').value;
+    btn.disabled = true;
+    btn.textContent = '⏳ Scrapeando...';
+    fetch(scrapeForm.action, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'url=' + encodeURIComponent(url)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        window.location.href = data.redirect;
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.textContent = '🔍 Scrapear URL oficial';
+      }
+    })
+    .catch(function(err) {
+      alert('Network error: ' + err);
+      btn.disabled = false;
+      btn.textContent = '🔍 Scrapear URL oficial';
+    });
+  });
+}
+</script>
+{% endblock %}

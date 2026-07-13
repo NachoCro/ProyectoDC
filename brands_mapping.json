@@ -1,0 +1,35 @@
+{
+  "asus": {
+    "direct_url": "https://www.asus.com/es/search/?SearchKey={mpn}"
+  },
+  "samsung": {
+    "direct_url": "https://www.samsung.com/es/search/?search={mpn}"
+  },
+  "lenovo": {
+    "direct_url": "https://www.lenovo.com/es/es/search?q={mpn}"
+  },
+  "hp": {
+    "direct_url": "https://www.hp.com/es-es/search.html?q={mpn}"
+  },
+  "dell": {
+    "direct_url": "https://www.dell.com/support/home/es-es?kwp={mpn}"
+  },
+  "lg": {
+    "direct_url": "https://www.lg.com/es/search?query={mpn}"
+  },
+  "logitech": {
+    "direct_url": "https://www.logitech.com/es-es/search?q={mpn}"
+  },
+  "creality": {
+    "direct_url": "https://www.creality.com/search?q={mpn}"
+  },
+  "razer": {
+    "direct_url": "https://www.razer.com/es-en/search?q={mpn}"
+  },
+  "xiaomi": {
+    "direct_url": "https://www.mi.com/es/search?keyword={mpn}"
+  },
+  "tcl": {
+    "direct_url": "https://www.tcl.com/es/es/search?q={mpn}"
+  }
+}

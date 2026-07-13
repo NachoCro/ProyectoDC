@@ -1,0 +1,3699 @@
+{
+  "TELEFONOS FIJOS E INALAMBRICOS": [
+    {
+      "nombre": "Cantidad de Auriculares"
+    },
+    {
+      "nombre": "Rango de frecuencia"
+    },
+    {
+      "nombre": "Número de Canales"
+    },
+    {
+      "nombre": "Capacidad de Auriculares Múltiples"
+    },
+    {
+      "nombre": "Agenda Identificador de llamadas",
+      "valor_default": "Sí"
+    },
+    {
+      "nombre": "Contestador Automático"
+    },
+    {
+      "nombre": "Llamada en Espera",
+      "valor_default": "Sí"
+    },
+    {
+      "nombre": "Bloqueo de Numeros"
+    },
+    {
+      "nombre": "Marcacion rapida"
+    },
+    {
+      "nombre": "Timbre distintitvo de Altavoz"
+    },
+    {
+      "nombre": "Control de Volumen de Altavoz"
+    },
+    {
+      "nombre": "Llamada en conferencia"
+    },
+    {
+      "nombre": "Compartir llamada",
+      "valor_default": "No especifica"
+    },
+    {
+      "nombre": "Pantalla"
+    },
+    {
+      "nombre": "Clase Bluetooth"
+    },
+    {
+      "nombre": "Enlace a celulares"
+    },
+    {
+      "nombre": "Manos libres"
+    },
+    {
+      "nombre": "Montable a pared",
+      "valor_default": "No aplica"
+    }
+  ],
+  "CELULARES": [
+    {
+      "nombre": "TAMAÑO PANTALLA",
+      "valor_default": "5.0 \""
+    },
+    {
+      "nombre": "RESOLUCION DE PANTALLA",
+      "valor_default": "540 x 960 (qHD)"
+    },
+    {
+      "nombre": "PROCESADOR",
+      "valor_default": "Quad-Core 1.4GHz"
+    },
+    {
+      "nombre": "MEMORIA RAM",
+      "valor_default": "1GB"
+    },
+    {
+      "nombre": "MEMORIA INTERNA",
+      "valor_default": "8 GB"
+    },
+    {
+      "nombre": "EXPANDIBLE",
+      "valor_default": "256 GB"
+    },
+    {
+      "nombre": "VELOCIDAD DE INTERNET",
+      "valor_default": "4G LTE"
+    },
+    {
+      "nombre": "SISTEMA OPERATIVO",
+      "valor_default": "ANDROID"
+    },
+    {
+      "nombre": "RESOLUCION DE VIDEO",
+      "valor_default": "FHD (1920 x 1080)@30fps"
+    },
+    {
+      "nombre": "RESOLUCION DE CAMARA",
+      "valor_default": "8MPX"
+    },
+    {
+      "nombre": "FLASH",
+      "valor_default": "Si"
+    },
+    {
+      "nombre": "RESOLUCION CAMARA SELFIE",
+      "valor_default": "5MPX"
+    },
+    {
+      "nombre": "FLASH CAMARA SELFIE",
+      "valor_default": "No"
+    },
+    {
+      "nombre": "SLOW MOTION",
+      "valor_default": "120fps @HD"
+    },
+    {
+      "nombre": "FUNCIONES EXTRA",
+      "valor_default": "Acelerómetro, Sensor de Proximidad, Giroscopio, Brújula, Barómetro, Sensor de ritmo cardíaco"
+    },
+    {
+      "nombre": "BLUETOOTH",
+      "valor_default": "Si"
+    },
+    {
+      "nombre": "GPS",
+      "valor_default": "Si"
+    },
+    {
+      "nombre": "FUNCIÓN NFC (Near Field Communication)",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "CAPACIDAD BATERIA",
+      "valor_default": "Batería 5000 mAh NO EXTRAÍBLE - CON CARGA RÁPIDA - SIN Carga inalámbrica"
+    },
+    {
+      "nombre": "DIMENSIONES ALTO ANCHO PROFUNDIDAD",
+      "valor_default": "143.4mm x 72.1mm x 8.9mm"
+    },
+    {
+      "nombre": "PESO",
+      "valor_default": "154grs"
+    },
+    {
+      "nombre": "USB",
+      "valor_default": "USB-C / Micro USB 2.0"
+    },
+    {
+      "nombre": "DUAL SIM",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "DESBLOQUEO",
+      "valor_default": "Huella dactilar - Reconocimiento facial - Reconocimiento de Iris"
+    },
+    {
+      "nombre": "RESISTENTE AL AGUA",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "SMARTWATCH": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Samsung SM-375NZ"
+    },
+    {
+      "nombre": "Tamaño",
+      "valor_default": "1.32"
+    },
+    {
+      "nombre": "Memoria interna",
+      "valor_default": "4MB"
+    },
+    {
+      "nombre": "Memoria RAM",
+      "valor_default": "128KB"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Aleación de aluminio"
+    },
+    {
+      "nombre": "Resistente al agua",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Profundidad",
+      "valor_default": "50mts"
+    },
+    {
+      "nombre": "Bluetooth",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "70mAh"
+    },
+    {
+      "nombre": "SO compatible",
+      "valor_default": "iOS 9.0 o superior + Android 4.4 o superior."
+    },
+    {
+      "nombre": "Duración batería",
+      "valor_default": "11 días"
+    }
+  ],
+  "NOTEBOOKS": [
+    {
+      "nombre": "PROCESADOR",
+      "valor_default": "INTEL QUAD CORE"
+    },
+    {
+      "nombre": "MODELO DE PROCESADOR",
+      "valor_default": "I5 8250"
+    },
+    {
+      "nombre": "VELOCIDAD DEL PROCESADOR",
+      "valor_default": "3.2GHZ"
+    },
+    {
+      "nombre": "CACHÉ DEL PROCESADOR",
+      "valor_default": "3MB"
+    },
+    {
+      "nombre": "MEMORIA RAM",
+      "valor_default": "4 GB"
+    },
+    {
+      "nombre": "MEMORIA AMPLIABLE",
+      "valor_default": "32GB"
+    },
+    {
+      "nombre": "DISCO RIGIDO",
+      "valor_default": "500 GB + SSD 256GB"
+    },
+    {
+      "nombre": "TARJETA GRAFICA"
+    },
+    {
+      "nombre": "TECLADO NUMERICO",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "SISTEMA OPERATIVO",
+      "valor_default": "FREE"
+    },
+    {
+      "nombre": "PANTALLA",
+      "valor_default": "2020-06-15 00:00:00"
+    },
+    {
+      "nombre": "RESOLUCION DE PANTALLA",
+      "valor_default": "HD"
+    },
+    {
+      "nombre": "PANTALLA TACTIL",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "PUERTOS HDMI",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "PUERTO LAN 10/100",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "PUERTO LAN GIGABIT",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "USB 2.0",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "USB 3.0",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "USB 3.1",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "USB-C",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "WIFI",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "BLUETOOTH",
+      "valor_default": "4.2V"
+    },
+    {
+      "nombre": "LECTOR DE TARJETAS",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "LECTOGRABADORA DVD",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "WEBCAM",
+      "valor_default": "720P"
+    },
+    {
+      "nombre": "LECTOR DE HUELLAS",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "BATERIA",
+      "valor_default": "3 CELDAS 41WH"
+    },
+    {
+      "nombre": "MIRACAST",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "DIMENSIONES"
+    },
+    {
+      "nombre": "PESO"
+    },
+    {
+      "nombre": "GARANTIA (meses)",
+      "valor_default": "12 meses"
+    }
+  ],
+  "TABLET": [
+    {
+      "nombre": "PROCESADOR (modelo y velocidad)",
+      "valor_default": "QUAD CORE"
+    },
+    {
+      "nombre": "SISTEMA OPERATIVO (marca y versión)",
+      "valor_default": "SO Android Oreo"
+    },
+    {
+      "nombre": "PANTALLA (tamaño y resolución)",
+      "valor_default": "Tablet PC 7\". 1024 x 600."
+    },
+    {
+      "nombre": "MEMORIA ALMACENAMIENTO",
+      "valor_default": "Memoria int. 8G"
+    },
+    {
+      "nombre": "MEMORIA EXPANDIBLE A",
+      "valor_default": "hasta 128 GB"
+    },
+    {
+      "nombre": "MEMORIA RAM (velocidad)",
+      "valor_default": "RAM 1G."
+    },
+    {
+      "nombre": "CONECTIVIDAD",
+      "valor_default": "WI FI. USB 2.0 x 1. Bluetooth 4.0."
+    },
+    {
+      "nombre": "CAMARA (cantidad y resolución)",
+      "valor_default": "Camara Frontal 0.3MP / Trasera 2MP"
+    },
+    {
+      "nombre": "HDMI"
+    },
+    {
+      "nombre": "SENSORES",
+      "valor_default": "Acelerómetro, Sensor hall"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "2800mAh"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "100 x 10 x 1"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "310 grs"
+    }
+  ],
+  "PROYECTORES": [
+    {
+      "nombre": "Método de Proyección: (Ej: Montaje frontal / retroproyección / colgado del techo)"
+    },
+    {
+      "nombre": "Número de píxeles"
+    },
+    {
+      "nombre": "Lúmenes (salida de luz)"
+    },
+    {
+      "nombre": "Relación de aspecto"
+    },
+    {
+      "nombre": "Resolución Nativa"
+    },
+    {
+      "nombre": "Tipo de lámpara (Ej: 200W)"
+    },
+    {
+      "nombre": "Vida útil de la lámpara"
+    },
+    {
+      "nombre": "Tamaño - Distancia proyectada"
+    },
+    {
+      "nombre": "Corrección de trapecio"
+    },
+    {
+      "nombre": "USB Plug and Play"
+    },
+    {
+      "nombre": "Relación de contraste"
+    },
+    {
+      "nombre": "Cantidad de colores"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    }
+  ],
+  "MONITORES": [
+    {
+      "nombre": "Producto"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "VGA. HDMI, PLUG 3.5 (Auriculares)"
+    },
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Tamaño de pantalla",
+      "valor_default": "31,5''"
+    },
+    {
+      "nombre": "Curvatura de la pantalla",
+      "valor_default": "1800R / NO APLICA"
+    },
+    {
+      "nombre": "Relación de aspecto",
+      "valor_default": "16:9"
+    },
+    {
+      "nombre": "Resolución óptima",
+      "valor_default": "1366 x 768"
+    },
+    {
+      "nombre": "Tiempo de respuesta estándar",
+      "valor_default": "8ms"
+    },
+    {
+      "nombre": "Brillo"
+    },
+    {
+      "nombre": "Contraste estático"
+    },
+    {
+      "nombre": "Relación de contraste"
+    },
+    {
+      "nombre": "Píxeles"
+    },
+    {
+      "nombre": "Ángulo de visualización"
+    },
+    {
+      "nombre": "Cantidad de colores"
+    },
+    {
+      "nombre": "Refresh",
+      "valor_default": "60Hz"
+    },
+    {
+      "nombre": "Peso"
+    }
+  ],
+  "TV": [
+    {
+      "nombre": "Producto",
+      "valor_default": "TV SMART"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "TCL L32S6500"
+    },
+    {
+      "nombre": "Tamaño de pantalla",
+      "valor_default": "32\""
+    },
+    {
+      "nombre": "Sintonizador TDA",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "HD (1366x768)"
+    },
+    {
+      "nombre": "Relación de aspecto",
+      "valor_default": "16:9"
+    },
+    {
+      "nombre": "Tiempo de respuesta estándar",
+      "valor_default": "7.2ms"
+    },
+    {
+      "nombre": "Parlantes (RMS) (cantidad y potencia)",
+      "valor_default": "2 x 5w"
+    },
+    {
+      "nombre": "Conectividad",
+      "valor_default": "RED LAN / WIFI / HDMI / USB / Componente en (Y / Pb / Pr) / AV / Salida de audio digital (óptica)"
+    },
+    {
+      "nombre": "Chromecast builtIn"
+    },
+    {
+      "nombre": "Salidas:",
+      "valor_default": "Video Compuesto - Audio S/PDIF - Auriculares"
+    },
+    {
+      "nombre": "Picture-In-Picture"
+    },
+    {
+      "nombre": "Aplicaciones preinstaladas (SMART TV)",
+      "valor_default": "Netflix, Youtube, Spotify"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    },
+    {
+      "nombre": "Función 3D",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Base giratoria",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Bluetooth",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Cámara incluída",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "TV BOX": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Procesador"
+    },
+    {
+      "nombre": "Almacenamiento"
+    },
+    {
+      "nombre": "Memoria RAM"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "HDMI,AV"
+    },
+    {
+      "nombre": "Mñáxima resolución de video",
+      "valor_default": "4K UHD"
+    },
+    {
+      "nombre": "Bluetooth",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "WIFI",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Sistema operativo",
+      "valor_default": "Android"
+    },
+    {
+      "nombre": "Aplicaciones compatibles"
+    }
+  ],
+  "PEN DRIVE": [
+    {
+      "nombre": "Producto: Pendrive"
+    },
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Capacidad de memoria",
+      "valor_default": "16GB / 32GB / 64GB / 128GB"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "2.0 / 3.0 / 3.1"
+    },
+    {
+      "nombre": "Velocidad de operación",
+      "valor_default": "100 MB/S"
+    },
+    {
+      "nombre": "Sistema operativo soportado"
+    },
+    {
+      "nombre": "Factor de forma",
+      "valor_default": "CON TAPA / RETRACTIL / NANO"
+    },
+    {
+      "nombre": "Voltaje de operación"
+    },
+    {
+      "nombre": "Intervalo de temperatura operativa",
+      "valor_default": "0-60ºC"
+    }
+  ],
+  "MEMORIA SD": [
+    {
+      "nombre": "Marca y modelo:",
+      "valor_default": "ADATA"
+    },
+    {
+      "nombre": "Capacidad:",
+      "valor_default": "16GB"
+    },
+    {
+      "nombre": "velocidad de lectura escritura:",
+      "valor_default": "Velocidad de lectura/escritura sec. hasta 80/ 10 (MB/s)"
+    },
+    {
+      "nombre": "Velocidad UHS:",
+      "valor_default": "Clase 1"
+    },
+    {
+      "nombre": "Clase de velocidad:",
+      "valor_default": "Clase 10"
+    },
+    {
+      "nombre": "Dimensiones de las microSD",
+      "valor_default": "15 x 11 x 1,0mm"
+    },
+    {
+      "nombre": "Dimensiones del adaptador de SD",
+      "valor_default": "24 mm x 32 mm x 2,1 mm"
+    },
+    {
+      "nombre": "Formato FAT32 N/E"
+    },
+    {
+      "nombre": "Temperatura de servicio",
+      "valor_default": "-25°C (-13°F) a 85°C (185°F)"
+    },
+    {
+      "nombre": "Temperatura de almacenamiento",
+      "valor_default": "N/E"
+    },
+    {
+      "nombre": "Tensión Voltaje",
+      "valor_default": "2.7 a 3.6V"
+    }
+  ],
+  "HD": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "WD"
+    },
+    {
+      "nombre": "Tecnología de almacenamiento",
+      "valor_default": "HDD / SSD"
+    },
+    {
+      "nombre": "Factor de uso (Interno/Externo)",
+      "valor_default": "Interno"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "1TB / 2TB"
+    },
+    {
+      "nombre": "Factor de forma",
+      "valor_default": "2.5 in / 3.5 in"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "SATA III"
+    },
+    {
+      "nombre": "Velocidad de transferencia de datos",
+      "valor_default": "210MB/s"
+    },
+    {
+      "nombre": "Compatible con transferencias de datos SATA (Gb/s)",
+      "valor_default": "6Gb/s"
+    },
+    {
+      "nombre": "Caché, multisegmentada (MB)",
+      "valor_default": "64MB"
+    },
+    {
+      "nombre": "Apto para RAID",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    },
+    {
+      "nombre": "Garantía"
+    }
+  ],
+  "HD EXTERNO": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Tecnología de almacenamiento",
+      "valor_default": "HDD / SSD"
+    },
+    {
+      "nombre": "Factor de uso (Interno/Externo)",
+      "valor_default": "Interno"
+    },
+    {
+      "nombre": "Capacidad"
+    },
+    {
+      "nombre": "Compatibilidad USB 3.0 USB 2.0"
+    },
+    {
+      "nombre": "Sistema de archivos"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    }
+  ],
+  "HD SSD": [
+    {
+      "nombre": "Marca: Kingston"
+    },
+    {
+      "nombre": "Serie: UV400"
+    },
+    {
+      "nombre": "Modelo: SUV400S37/120G"
+    },
+    {
+      "nombre": "Tamaño: 2.5″"
+    },
+    {
+      "nombre": "Capacidad: 120GB"
+    },
+    {
+      "nombre": "Interface: SATA III 6Gb/s"
+    },
+    {
+      "nombre": "Lectura: 550MB/S"
+    },
+    {
+      "nombre": "Escritura: 350MB/S"
+    }
+  ],
+  "GABINETE GAMER": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "COOLERMASTER"
+    },
+    {
+      "nombre": "Número de ventiladores",
+      "valor_default": "CMP-351"
+    },
+    {
+      "nombre": "Tarjeta MAdre Soportada:",
+      "valor_default": "Micro-ATX, ATX"
+    },
+    {
+      "nombre": "Bahias"
+    },
+    {
+      "nombre": "Panel Fronta:",
+      "valor_default": "3.0 Soporte Super Speed USB"
+    },
+    {
+      "nombre": "Expansiones"
+    },
+    {
+      "nombre": "Ventilador Frontal:"
+    },
+    {
+      "nombre": "Ventilador Trasero:",
+      "valor_default": "120 mm"
+    },
+    {
+      "nombre": "Ventilador Lateral:"
+    },
+    {
+      "nombre": "Fuente de Poder"
+    },
+    {
+      "nombre": "Tarjetas de Video de hasta:"
+    },
+    {
+      "nombre": "Disipador de CPU:"
+    }
+  ],
+  "MOUSE GAMER": [
+    {
+      "nombre": "Producto",
+      "valor_default": "mouse"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Redragon m710"
+    },
+    {
+      "nombre": "Ergonomía",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Formato ambidiestro?",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Orientación",
+      "valor_default": "Diestro"
+    },
+    {
+      "nombre": "Precisión",
+      "valor_default": "8200DPI"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "1000 Hz"
+    },
+    {
+      "nombre": "Botones programables",
+      "valor_default": "19.0"
+    },
+    {
+      "nombre": "Botones Mecánicos",
+      "valor_default": "12.0"
+    },
+    {
+      "nombre": "Rueda de desplazamiento",
+      "valor_default": "Sí"
+    },
+    {
+      "nombre": "Sensor",
+      "valor_default": "4G"
+    },
+    {
+      "nombre": "Retroiluminación",
+      "valor_default": "SI, LED VERDE"
+    },
+    {
+      "nombre": "Material de base de ratón"
+    },
+    {
+      "nombre": "Materrial y longitud del cable",
+      "valor_default": "Fibra trenzado 2.1mts"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    },
+    {
+      "nombre": "Extra",
+      "valor_default": "Memoria Integrada"
+    }
+  ],
+  "TECLADOS GAMER": [
+    {
+      "nombre": "Ergonomía",
+      "valor_default": "Ultra Compacto Tenkeyless (sin pad numérico)"
+    },
+    {
+      "nombre": "Tipo de interruptores",
+      "valor_default": "Mecánicos"
+    },
+    {
+      "nombre": "Tipo switch",
+      "valor_default": "Outemu Blue, táctil con click audible, fuerza de actuación 60 gr"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Plástico ABS reforzado y placa de aluminio anodizado"
+    },
+    {
+      "nombre": "Soporta salpicaduras",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Cantidad de teclas",
+      "valor_default": "104.0"
+    },
+    {
+      "nombre": "Teclas programables",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Teclas antifantasma"
+    },
+    {
+      "nombre": "Perfiles programables",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Funciones multimedia",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Retroiluminación",
+      "valor_default": "SI, RGB o Rainbow"
+    },
+    {
+      "nombre": "Tiempo de respuesta"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "36.3×16.5×3.3cm"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "140grs"
+    },
+    {
+      "nombre": "Cable",
+      "valor_default": "Goma, reforzado. Soporta 12kg y 10000 flexiones. USB enchapado en oro y filtro anti interferencias"
+    },
+    {
+      "nombre": "Extras",
+      "valor_default": "Teclas moldeadas por inyección láser de doble disparo, keypicker"
+    }
+  ],
+  "PAD GAMER": [
+    {
+      "nombre": "Material"
+    },
+    {
+      "nombre": "Grosor"
+    },
+    {
+      "nombre": "Dimensiones"
+    }
+  ],
+  "GAMEPAD": [
+    {
+      "nombre": "Compatibilidad",
+      "valor_default": "P4, P3 y PC."
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "USB/Bluetooth"
+    },
+    {
+      "nombre": "Botones programables",
+      "valor_default": "12 Botones de Acción"
+    },
+    {
+      "nombre": "Botones con funciones",
+      "valor_default": "Home/Share/Options"
+    },
+    {
+      "nombre": "Palancas",
+      "valor_default": "2.0"
+    },
+    {
+      "nombre": "Cable/Wireless",
+      "valor_default": "Wireless"
+    },
+    {
+      "nombre": "Alcance",
+      "valor_default": "10mts"
+    },
+    {
+      "nombre": "Vibración",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Extras",
+      "valor_default": "Pad de dirección con función click"
+    }
+  ],
+  "CONSOLAS": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Sony PS4 Slim"
+    },
+    {
+      "nombre": "Unidad óptica",
+      "valor_default": "Blu-Ray"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "1TB"
+    },
+    {
+      "nombre": "Cantidad de joystick",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "Conectividad con joystick",
+      "valor_default": "wireless"
+    },
+    {
+      "nombre": "Incluye move/kinect",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Incluye juegos",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Juegos incluídos"
+    },
+    {
+      "nombre": "Salida HDMI",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "WIFI",
+      "valor_default": "SI"
+    }
+  ],
+  "CAMARAS IP Y CCTV": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "HIKVISION DS-2CD1001-I"
+    },
+    {
+      "nombre": "Material"
+    },
+    {
+      "nombre": "Sistemas operativos móviles compatibles"
+    },
+    {
+      "nombre": "Sistemas operativos compatibles"
+    },
+    {
+      "nombre": "Compresión",
+      "valor_default": "H.264/MJPEG"
+    },
+    {
+      "nombre": "Estilo de cámara",
+      "valor_default": "BULLET  /  DOMO"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "1280 × 720"
+    },
+    {
+      "nombre": "Sensor",
+      "valor_default": "1/4\" progressive scan CMOS"
+    },
+    {
+      "nombre": "FPS",
+      "valor_default": "60Hz: 30fps@(1280 × 720)"
+    },
+    {
+      "nombre": "Lente (mm)",
+      "valor_default": "2.8 mm @F2.2, horizontal field of view 92°, 4 mm @F2.2, horizontal field of view 70°\n6 mm @F2.2, horizontal field of view 56°"
+    },
+    {
+      "nombre": "Iluminación mínima (Lux)",
+      "valor_default": "Color: 0.01Lux @(F1.2, AGC ON),0 Lux with IR"
+    },
+    {
+      "nombre": "Giro / Inclinación"
+    },
+    {
+      "nombre": "Visión nocturna",
+      "valor_default": "IR cut filter with auto switch"
+    },
+    {
+      "nombre": "Distancia de visión nocturna IR (mts)",
+      "valor_default": "Hasta 30 mts"
+    },
+    {
+      "nombre": "Detección de movimiento y sonido",
+      "valor_default": "Detección de movimiento"
+    },
+    {
+      "nombre": "Salida de audio"
+    },
+    {
+      "nombre": "Movimiento/PTZ",
+      "valor_default": "No"
+    },
+    {
+      "nombre": "Zoom",
+      "valor_default": "No"
+    },
+    {
+      "nombre": "Almacenamiento SD",
+      "valor_default": "No"
+    },
+    {
+      "nombre": "Exterior/Interior",
+      "valor_default": "IP67"
+    },
+    {
+      "nombre": "Conectividad",
+      "valor_default": "1 RJ45 10M/100M self-adaptive Ethernet port"
+    },
+    {
+      "nombre": "Alimentación",
+      "valor_default": "12VDC ±25%, PoE (802.3af)"
+    },
+    {
+      "nombre": "Fuente",
+      "valor_default": "NO INCLUYE"
+    }
+  ],
+  "DVR": [
+    {
+      "nombre": "ENTRADA"
+    },
+    {
+      "nombre": "Entrada de Audio",
+      "valor_default": "1CH"
+    },
+    {
+      "nombre": "Compresión de video",
+      "valor_default": "H.264, H.264 +"
+    },
+    {
+      "nombre": "Entrada de video analogico",
+      "valor_default": "4ch"
+    },
+    {
+      "nombre": "Entrada de video analogico y HD/TVI",
+      "valor_default": "1080p25, 1080p30, 720p25, 720p30"
+    },
+    {
+      "nombre": "Entrada de video IP",
+      "valor_default": "1 canal"
+    },
+    {
+      "nombre": "Resolución de entrada de video IP",
+      "valor_default": "Hasta 960p"
+    },
+    {
+      "nombre": "Audio Bidireccional",
+      "valor_default": "RCA de 1 canal"
+    },
+    {
+      "nombre": "SALIDA"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "1080p"
+    },
+    {
+      "nombre": "FPS",
+      "valor_default": "25/30fps"
+    },
+    {
+      "nombre": "Salida de audio",
+      "valor_default": "1 canal"
+    },
+    {
+      "nombre": "Reproducción",
+      "valor_default": "4 ch"
+    },
+    {
+      "nombre": "HD",
+      "valor_default": "SATA - Hasta 6TB"
+    },
+    {
+      "nombre": "Protocolos de red",
+      "valor_default": "TCP / IP, PPPoE, DHCP, Hik-Connect, DNS, DDNS, NTP, SADP, SMTP, NFS, iSCSI, UPnP ™, HTTPS"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "Ethernet 10/100"
+    },
+    {
+      "nombre": "Interfaz USB",
+      "valor_default": "2 USB 2.0"
+    },
+    {
+      "nombre": "Alimentación",
+      "valor_default": "12V DC"
+    }
+  ],
+  "MATRIZ DE PUNTO": [
+    {
+      "nombre": "Modo de impresión"
+    },
+    {
+      "nombre": "Cantidad de agujas"
+    },
+    {
+      "nombre": "Cantidad de columnas"
+    },
+    {
+      "nombre": "Velocidad de impresión"
+    },
+    {
+      "nombre": "Resolución de impresión"
+    },
+    {
+      "nombre": "Conectividad"
+    },
+    {
+      "nombre": "Alimentación de papel"
+    },
+    {
+      "nombre": "Formato de papel"
+    },
+    {
+      "nombre": "Dimensiones del producto"
+    },
+    {
+      "nombre": "Peso"
+    },
+    {
+      "nombre": "Sistemas operativos compatibles"
+    },
+    {
+      "nombre": "Duración del cabezal de impresión"
+    },
+    {
+      "nombre": "Memoria"
+    },
+    {
+      "nombre": "Insumo"
+    },
+    {
+      "nombre": "Rendimiento del insumo"
+    }
+  ],
+  "IMPRESORA LASER Y CHORRO DE TINTA": [
+    {
+      "nombre": "Tecnología de impresión",
+      "valor_default": "chorro de tinta"
+    },
+    {
+      "nombre": "Funciones de impresión",
+      "valor_default": "Monofunsion / Multifuncion"
+    },
+    {
+      "nombre": "Impresión doble cara automática SI/NO"
+    },
+    {
+      "nombre": "Tiempo de salida de primera impresión"
+    },
+    {
+      "nombre": "Ciclo mensual de trabajo",
+      "valor_default": "6,000 páginas en negro y 7,000 a color"
+    },
+    {
+      "nombre": "Volumen de impresión mensual recomendado"
+    },
+    {
+      "nombre": "Velocidad de impresión",
+      "valor_default": "blanco y negro 33 ppm  color 15 ppm"
+    },
+    {
+      "nombre": "Resolución de impresión"
+    },
+    {
+      "nombre": "Conectividad",
+      "valor_default": "Wi-Fi"
+    },
+    {
+      "nombre": "Alimentación de papel (bandeja)"
+    },
+    {
+      "nombre": "Formato de papel",
+      "valor_default": "A4,A5,A6,B5,Carta,Legal,Media carta,9x13 cm,10x14.8 cm,10x15 cm,13x18 cm,20x25 cm Capacidad máxima 100"
+    },
+    {
+      "nombre": "Dimensiones del producto"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "4.0 kg (8.8 lb)"
+    },
+    {
+      "nombre": "Sistemas operativos compatibles",
+      "valor_default": "Windows Vista®/Windows® 7/Windows 8/8.1/Windows 10 *32 bit, 64bit)"
+    },
+    {
+      "nombre": "Memoria interna"
+    },
+    {
+      "nombre": "Lector de memoria"
+    },
+    {
+      "nombre": "Insumo"
+    },
+    {
+      "nombre": "Rendimiento del insumo"
+    },
+    {
+      "nombre": "Resolución de escaneo",
+      "valor_default": "NO APLICA"
+    },
+    {
+      "nombre": "Velocidad de escaneo",
+      "valor_default": "NO APLICA"
+    },
+    {
+      "nombre": "Alimentador automático",
+      "valor_default": "NO APLICA"
+    },
+    {
+      "nombre": "Tamaño del clistal",
+      "valor_default": "NO APLICA"
+    },
+    {
+      "nombre": "Formatos de escaneo",
+      "valor_default": "NO APLICA"
+    }
+  ],
+  "ESCANER": [
+    {
+      "nombre": "Velocidad de escaneo"
+    },
+    {
+      "nombre": "Resolución óptica"
+    },
+    {
+      "nombre": "Doble cara automática",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "ADF Bandeja",
+      "valor_default": "20 páginas"
+    },
+    {
+      "nombre": "Formato de papel"
+    },
+    {
+      "nombre": "Volumen diario recomendado"
+    },
+    {
+      "nombre": "Portátil SI/NO"
+    },
+    {
+      "nombre": "Ranura para tarjetas de memoria"
+    },
+    {
+      "nombre": "Duración de la batería"
+    },
+    {
+      "nombre": "Tipo de baterías"
+    },
+    {
+      "nombre": "Formatos de salida"
+    },
+    {
+      "nombre": "Sistemas operativos compatibles"
+    }
+  ],
+  "INSUMOS": [
+    {
+      "nombre": "Marca del insumo",
+      "valor_default": "MGN"
+    },
+    {
+      "nombre": "Modelo alfanumérico",
+      "valor_default": "CN053AL"
+    },
+    {
+      "nombre": "Tecnología de impresión",
+      "valor_default": "Chorro fde tinta"
+    },
+    {
+      "nombre": "Tipo de insumo",
+      "valor_default": "Tinta para sistema continuo"
+    },
+    {
+      "nombre": "Color",
+      "valor_default": "Negro"
+    },
+    {
+      "nombre": "Incluye CHIP",
+      "valor_default": "NO APLICA / SI / NO"
+    },
+    {
+      "nombre": "Capacidad del cartucho de tinta",
+      "valor_default": "100 ml"
+    },
+    {
+      "nombre": "Rendimiento del insumo"
+    },
+    {
+      "nombre": "Impresoras compatibles",
+      "valor_default": "impresoras con sistema de tinta continuo"
+    }
+  ],
+  "PAPEL": [
+    {
+      "nombre": "Marca",
+      "valor_default": "GLOBAL"
+    },
+    {
+      "nombre": "Gramaje",
+      "valor_default": "135grs"
+    },
+    {
+      "nombre": "Para impresora",
+      "valor_default": "Láser/chorro de tinta"
+    },
+    {
+      "nombre": "Glossy",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Tamaño",
+      "valor_default": "A4"
+    }
+  ],
+  "PARLANTES DE PC": [
+    {
+      "nombre": "Interfaz",
+      "valor_default": "Conector 3.5 / USB / RCA"
+    },
+    {
+      "nombre": "Configuración",
+      "valor_default": "2.0 / 2.1 / 5.1"
+    },
+    {
+      "nombre": "Vías",
+      "valor_default": "3.0"
+    },
+    {
+      "nombre": "Potencia total de salida (RMS)",
+      "valor_default": "50 watts RMS"
+    },
+    {
+      "nombre": "Funciones/controles ajustables",
+      "valor_default": "Volumen, tono, agudos, bajo"
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "Entrada de auriculares Miniplug 3.5"
+    },
+    {
+      "nombre": "Tamaño de conos (en pulgadas)",
+      "valor_default": "woofer: 4 \", 4ohm x2; tweeter: 1\", 4ohm"
+    },
+    {
+      "nombre": "Frecuencia de respuesta",
+      "valor_default": "20 ~ 20 KHz"
+    },
+    {
+      "nombre": "Relación señal/ruido",
+      "valor_default": "85dB"
+    },
+    {
+      "nombre": "Alimentación",
+      "valor_default": "220V / USB"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Madera / Plástico"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    }
+  ],
+  "PORTATILES": [
+    {
+      "nombre": "Conexion",
+      "valor_default": "Bluetooth / Wireless"
+    },
+    {
+      "nombre": "Configuración",
+      "valor_default": "Portable"
+    },
+    {
+      "nombre": "Potencia total de salida (RMS)",
+      "valor_default": "5.5W RMS"
+    },
+    {
+      "nombre": "Funciones/controles ajustables",
+      "valor_default": "Volumen / Radio"
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "Tarjeta Micro SD / Bluetooth / USB"
+    },
+    {
+      "nombre": "Tamaño de conos (en pulgadas)",
+      "valor_default": "2\""
+    },
+    {
+      "nombre": "Rango de frecuencia",
+      "valor_default": "150Hz~14KHz"
+    },
+    {
+      "nombre": "Relación señal/ruido (sensibilidad)"
+    },
+    {
+      "nombre": "Alimentación",
+      "valor_default": "Micro USB"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Goma"
+    },
+    {
+      "nombre": "Manos Libres",
+      "valor_default": "si/no"
+    },
+    {
+      "nombre": "Tiempo de reproducción"
+    },
+    {
+      "nombre": "Micrófono incluído",
+      "valor_default": "si/no"
+    },
+    {
+      "nombre": "Control remoto",
+      "valor_default": "Si/No"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "1200 mAh"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    },
+    {
+      "nombre": "Peso (Grs)"
+    }
+  ],
+  "MICROFONOS": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "Miniplug 3.5mm/ Bluetooth"
+    },
+    {
+      "nombre": "Reducción de ruiidos",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Patrón",
+      "valor_default": "OMNIDIRECCIONAL / DIRECCIONAL"
+    },
+    {
+      "nombre": "Potencia de transmisión de salida",
+      "valor_default": "13dBm"
+    },
+    {
+      "nombre": "Interruptor ON/OFF integrado.",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "Micf3.5mm/MICf6.5mm"
+    },
+    {
+      "nombre": "Impedancia",
+      "valor_default": "2.2KO"
+    },
+    {
+      "nombre": "Relación señal/ruido (sensibilidad)",
+      "valor_default": "41dB"
+    },
+    {
+      "nombre": "Frecuencia de respuesta",
+      "valor_default": "30-20000Hz"
+    },
+    {
+      "nombre": "Extras",
+      "valor_default": "Batería de litio recargable: 3.7V 380mAh"
+    },
+    {
+      "nombre": "Longitud del cable o alcance (Mts)",
+      "valor_default": "25mts"
+    }
+  ],
+  "AURICULARES": [
+    {
+      "nombre": "Producto",
+      "valor_default": "Auriculares"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Sentey mmm-110"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "Conector 3.5 / USB / RCA / Bluetooth"
+    },
+    {
+      "nombre": "Configuración",
+      "valor_default": "Headset / InEar"
+    },
+    {
+      "nombre": "Micrófono",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Manos Libres",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Cancelación de ruido",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Plegable",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Potencia total de salida (RMS)",
+      "valor_default": "50 watts RMS"
+    },
+    {
+      "nombre": "Funciones/controles ajustables",
+      "valor_default": "Volumen  Mute  Respuesta/finalización de llamada\nRechazo de llamadas\nSilenciamiento del micrófono\nLlamada retenida\nAlterná entre llamadas y música\nAlternar entre dos llamadas"
+    },
+    {
+      "nombre": "Conector",
+      "valor_default": "Miniplug 3.5"
+    },
+    {
+      "nombre": "Tamaño de conos (en pulgadas)",
+      "valor_default": "ø40mm"
+    },
+    {
+      "nombre": "Tipo de iman",
+      "valor_default": "Pace 105"
+    },
+    {
+      "nombre": "Impedancia",
+      "valor_default": "32Ω +-15"
+    },
+    {
+      "nombre": "Rango de frecuencia",
+      "valor_default": "20-20,000Hz"
+    },
+    {
+      "nombre": "Relación señal/ruido (Sensibilidad)",
+      "valor_default": "103dB±3dB"
+    },
+    {
+      "nombre": "Alimentacióm"
+    },
+    {
+      "nombre": "Material"
+    },
+    {
+      "nombre": "Longitud del cable (Mts)",
+      "valor_default": "1.2 m"
+    },
+    {
+      "nombre": "Dimensiones (mm)",
+      "valor_default": "10 mm"
+    },
+    {
+      "nombre": "Peso (Grs)"
+    }
+  ],
+  "AURICULARES INALÁMBRICO": [
+    {
+      "nombre": "Producto"
+    },
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "Bluetooth / Wireless / Wired"
+    },
+    {
+      "nombre": "Configuración",
+      "valor_default": "HEADSET / IN-EAR"
+    },
+    {
+      "nombre": "Micrófono",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Manos Libres",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Potencia total de salida (RMS)",
+      "valor_default": "5.5W RMS"
+    },
+    {
+      "nombre": "Funciones/controles ajustables",
+      "valor_default": "ON/OFF Volumen  Respuesta/finalización de llamada\n. Puerto de carga. PLAY/PAUSE. Avance/retroceso."
+    },
+    {
+      "nombre": "Conector",
+      "valor_default": "Miniplug 3.5"
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "Tarjeta Micro SD / Bluetooth / USB"
+    },
+    {
+      "nombre": "Relación señal/ruido (sensibilidad)",
+      "valor_default": "85dB"
+    },
+    {
+      "nombre": "Alimentación",
+      "valor_default": "Micro USB"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Goma/Plástico"
+    },
+    {
+      "nombre": "Tiempo de reproducción",
+      "valor_default": "6 horas"
+    },
+    {
+      "nombre": "Tiempo de carga",
+      "valor_default": "3 horas"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "1200 mAh"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    },
+    {
+      "nombre": "Peso (Grs)"
+    }
+  ],
+  "PC Y SERVIDORES": [
+    {
+      "nombre": "Marca"
+    },
+    {
+      "nombre": "Microprocesador"
+    },
+    {
+      "nombre": "Motherboard"
+    },
+    {
+      "nombre": "Memoria"
+    },
+    {
+      "nombre": "Capacidad de memorias"
+    },
+    {
+      "nombre": "HD"
+    },
+    {
+      "nombre": "HD SSD"
+    },
+    {
+      "nombre": "Lectograbadora"
+    },
+    {
+      "nombre": "Lector de memorias"
+    },
+    {
+      "nombre": "Fuente de alimentación"
+    },
+    {
+      "nombre": "Compartimientos de disco"
+    },
+    {
+      "nombre": "Almacenamiento interno máximo"
+    },
+    {
+      "nombre": "Soporte RAID"
+    },
+    {
+      "nombre": "Interfaz de red"
+    },
+    {
+      "nombre": "Ranuras de expansión"
+    },
+    {
+      "nombre": "Puertos"
+    },
+    {
+      "nombre": "Enfriamiento"
+    },
+    {
+      "nombre": "Sistema operativo compatible"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    }
+  ],
+  "UPS Y ESTABILIZADORES": [
+    {
+      "nombre": "Descripción",
+      "valor_default": "Regulación automática de tensión controlada por microprocesador"
+    },
+    {
+      "nombre": "Potencia",
+      "valor_default": "2000VA"
+    },
+    {
+      "nombre": "Rango de tensión de entrada",
+      "valor_default": "176 - 275 V"
+    },
+    {
+      "nombre": "Frecuencia de entrada",
+      "valor_default": "50 Hz"
+    },
+    {
+      "nombre": "Tensión de salida",
+      "valor_default": "220V"
+    },
+    {
+      "nombre": "Frecuencia de salida",
+      "valor_default": "50 Hz"
+    },
+    {
+      "nombre": "Tolerancia de salida",
+      "valor_default": "220VAC +/- 10%"
+    },
+    {
+      "nombre": "Respuesta"
+    },
+    {
+      "nombre": "Tomas",
+      "valor_default": "1 IRAM"
+    },
+    {
+      "nombre": "Protección",
+      "valor_default": "Llave con resposición"
+    },
+    {
+      "nombre": "Otras funciones",
+      "valor_default": "RJ-11 Port"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "180 x 95 x 115 mm"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "1.96Kgs"
+    },
+    {
+      "nombre": "Tipo de batería",
+      "valor_default": "Batería de plomo-ácido, hermética y sin mantenimiento con electrolito suspendido: estanca"
+    }
+  ],
+  "SOFTWARE": [
+    {
+      "nombre": "Producto",
+      "valor_default": "SISTEMA OPERATIVO"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "MICROSOFT 10"
+    },
+    {
+      "nombre": "Versión",
+      "valor_default": "PRO / HOME"
+    },
+    {
+      "nombre": "OEM (solo con equipos)",
+      "valor_default": "SI/NO"
+    },
+    {
+      "nombre": "Cantidad de equipos",
+      "valor_default": "1.0"
+    },
+    {
+      "nombre": "Idioma",
+      "valor_default": "ESPAÑOL"
+    },
+    {
+      "nombre": "Bits",
+      "valor_default": "32/64"
+    },
+    {
+      "nombre": "SERVER",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "COMANDAS": [
+    {
+      "nombre": "Tecnología de impresión"
+    },
+    {
+      "nombre": "Velocidad de impresión"
+    },
+    {
+      "nombre": "Ancho de papel"
+    },
+    {
+      "nombre": "Tamaño de letra"
+    },
+    {
+      "nombre": "Caracteres por pulgada"
+    },
+    {
+      "nombre": "Densidad de puntos"
+    },
+    {
+      "nombre": "Color de impresión"
+    },
+    {
+      "nombre": "Formato de papel"
+    },
+    {
+      "nombre": "Interfaces"
+    },
+    {
+      "nombre": "Alimentación"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    },
+    {
+      "nombre": "Duración del autocortador"
+    },
+    {
+      "nombre": "Duración util de la impresora"
+    }
+  ],
+  "BALANZAS": [
+    {
+      "nombre": "Capacidad máxima"
+    },
+    {
+      "nombre": "Graduación mínima"
+    },
+    {
+      "nombre": "Tara máxima"
+    },
+    {
+      "nombre": "Dimensiones plataforma"
+    },
+    {
+      "nombre": "Peso neto de la balanza"
+    },
+    {
+      "nombre": "Compensación de cero"
+    },
+    {
+      "nombre": "Función sumatoria"
+    },
+    {
+      "nombre": "Visor superior"
+    },
+    {
+      "nombre": "Visor medio"
+    },
+    {
+      "nombre": "Visor inferior"
+    },
+    {
+      "nombre": "Alimentación"
+    }
+  ],
+  "IMPRESORAS DE ETIQUETAS": [
+    {
+      "nombre": "método de impresión"
+    },
+    {
+      "nombre": "Tamaño de la cinta"
+    },
+    {
+      "nombre": "Ancho máximo de la cinta"
+    },
+    {
+      "nombre": "Velocidad de impresión"
+    },
+    {
+      "nombre": "Interfaz"
+    },
+    {
+      "nombre": "Tipos de códigos de barra"
+    },
+    {
+      "nombre": "Resolución máxima"
+    },
+    {
+      "nombre": "Sistema operativo"
+    },
+    {
+      "nombre": "Vida del cortador"
+    },
+    {
+      "nombre": "Ancho máximo de impresión"
+    },
+    {
+      "nombre": "Largo máximo de la etiqueta"
+    },
+    {
+      "nombre": "Compatibilidad de archivos de base de datos"
+    }
+  ],
+  "LECTORES DE CODIGOS DE BARRA": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Tipo de lector",
+      "valor_default": "DE MANO"
+    },
+    {
+      "nombre": "Tipo de lectura",
+      "valor_default": "CCD"
+    },
+    {
+      "nombre": "Comunicacion",
+      "valor_default": "CABLE"
+    },
+    {
+      "nombre": "Distancia de lectura",
+      "valor_default": "0 a 30cm"
+    },
+    {
+      "nombre": "Velocidad de lectura",
+      "valor_default": "330 x segundo"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "152,3 × 64,4 × 104,9"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "120G"
+    },
+    {
+      "nombre": "Tipos de códigos de barra",
+      "valor_default": "1D"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "OPCIONAL KBW, SERIE, O USB"
+    },
+    {
+      "nombre": "Sensor automático SI/NO",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Resistencia al polvo y agua",
+      "valor_default": "IP42"
+    },
+    {
+      "nombre": "Resistencia a las caídas",
+      "valor_default": "1.5mts"
+    }
+  ],
+  "CONTROLADORES FISCALES": [
+    {
+      "nombre": "Tecnología de impresión"
+    },
+    {
+      "nombre": "Resolución de impresión"
+    },
+    {
+      "nombre": "Velocidad de impresión"
+    },
+    {
+      "nombre": "Fuentes de impresión"
+    },
+    {
+      "nombre": "Capacidad de la columna"
+    },
+    {
+      "nombre": "Cortador automático SI/NO"
+    },
+    {
+      "nombre": "Ancho de rollo"
+    },
+    {
+      "nombre": "Diámetro del rollo"
+    },
+    {
+      "nombre": "Duración del equipo"
+    },
+    {
+      "nombre": "Interfaz"
+    }
+  ],
+  "CONTADORAS DE BILLETES": [
+    {
+      "nombre": "Detección de dinero falso",
+      "valor_default": "Detección automática con UV (ultravioleta) y MG (magnético) mientras cuenta."
+    },
+    {
+      "nombre": "Funciones automáticas",
+      "valor_default": "Automatización de inicio, parada, parada y limpieza."
+    },
+    {
+      "nombre": "Incluye display",
+      "valor_default": "Incorporado / Externo"
+    },
+    {
+      "nombre": "Funciones de procesamientopor lotes,",
+      "valor_default": "Adición y autoexamen, detección automática de media nota. Detección de dinero falso, detección de doble billete y/o enganchado, detección de billete roto"
+    },
+    {
+      "nombre": "Capacidad de la tolva",
+      "valor_default": "130 pcs"
+    },
+    {
+      "nombre": "Capacidad de apilado",
+      "valor_default": "130 pcs"
+    },
+    {
+      "nombre": "Velocidad de conteo",
+      "valor_default": "1000 pcs/min"
+    },
+    {
+      "nombre": "Tamaño de billetes contables",
+      "valor_default": "50*110mm - 90*185mm"
+    },
+    {
+      "nombre": "Dimensiones:",
+      "valor_default": "300x241x185mm"
+    }
+  ],
+  "ACCESS POINT MODEM Y ROUTERS": [
+    {
+      "nombre": "Interfaz",
+      "valor_default": "4 10/100Mbps RJ45 Ports\n1 RJ11 Port"
+    },
+    {
+      "nombre": "Botones",
+      "valor_default": "1 Power On/Off Button\n1 Reset Button\n1 Wi-Fi On/Off Button"
+    },
+    {
+      "nombre": "Estándares inalambricos",
+      "valor_default": "IEEE 802.11g, 802.11b,"
+    },
+    {
+      "nombre": "Tipo de antena",
+      "valor_default": "Omni directional, Undetachable, Reverse SMA"
+    },
+    {
+      "nombre": "Ganancia de antena",
+      "valor_default": "1 * 5dBi"
+    },
+    {
+      "nombre": "Características inalámbricas"
+    },
+    {
+      "nombre": "Frecuencia",
+      "valor_default": "2.4-2.4835GHz"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "150 mbps"
+    },
+    {
+      "nombre": "Potencia de transmisión",
+      "valor_default": "<20dBm(EIRP)"
+    },
+    {
+      "nombre": "SEGURIDAD",
+      "valor_default": "Si/No"
+    },
+    {
+      "nombre": "Fuente de alimentación",
+      "valor_default": "9VDC/0.6A"
+    },
+    {
+      "nombre": "Dimensiones (mm)",
+      "valor_default": "182x128x35mm"
+    },
+    {
+      "nombre": "Peso (Grs)",
+      "valor_default": "200grs"
+    }
+  ],
+  "PLACAS RED": [
+    {
+      "nombre": "Producto"
+    },
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "PCI / PCI-Express"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "100 Mbps / 400Mbps EN 2.4GHz"
+    },
+    {
+      "nombre": "Norma",
+      "valor_default": "802.11g and 802.11b / Ethernet IEEE802.3u"
+    },
+    {
+      "nombre": "Tipo de antena",
+      "valor_default": "Desmontable / No desmontable"
+    },
+    {
+      "nombre": "Ganancia de antena",
+      "valor_default": "5dBi"
+    },
+    {
+      "nombre": "Frecuencia",
+      "valor_default": "2.4 GHz"
+    },
+    {
+      "nombre": "Potencia de transmisión",
+      "valor_default": "<20dBm"
+    },
+    {
+      "nombre": "Funciones Wireless"
+    },
+    {
+      "nombre": "Seguridad Wireless",
+      "valor_default": "Soporta 64/128 bit WEP, WPA-PSK/WPA2-PSK, 802.1x"
+    },
+    {
+      "nombre": "Dimensiones (mm)",
+      "valor_default": "120.8 x 115.2 x 21.5 mm"
+    }
+  ],
+  "SWITCH": [
+    {
+      "nombre": "Estándares y protocolos"
+    },
+    {
+      "nombre": "Interfaz"
+    },
+    {
+      "nombre": "Cantidad de ventiladores"
+    },
+    {
+      "nombre": "Fuente de alimentación"
+    },
+    {
+      "nombre": "Tamaño del Búfer"
+    },
+    {
+      "nombre": "Capacidad de Switcheo"
+    },
+    {
+      "nombre": "Método de transferencia"
+    },
+    {
+      "nombre": "Funciones avanzadas"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    },
+    {
+      "nombre": "Peso (Grs)"
+    }
+  ],
+  "CABLE DE RED": [
+    {
+      "nombre": "Estandar",
+      "valor_default": "CABLE DE RED"
+    },
+    {
+      "nombre": "MARCA",
+      "valor_default": "AMP"
+    },
+    {
+      "nombre": "Conexión de entrada",
+      "valor_default": "RJ45"
+    },
+    {
+      "nombre": "Conexión de salida",
+      "valor_default": "RJ45"
+    },
+    {
+      "nombre": "Categoría",
+      "valor_default": "5E"
+    },
+    {
+      "nombre": "Contactos con baño de oro",
+      "valor_default": "SI  / NO"
+    },
+    {
+      "nombre": "Material de aislamiento",
+      "valor_default": "Forro de PVC"
+    },
+    {
+      "nombre": "Conductores con calibre",
+      "valor_default": "28.0"
+    },
+    {
+      "nombre": "Blindado",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Resistencia de voltaje",
+      "valor_default": "300 VDC 10 ms"
+    },
+    {
+      "nombre": "Interior/Exterior",
+      "valor_default": "Interior"
+    },
+    {
+      "nombre": "FTP",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Material del conector",
+      "valor_default": "PLASTICO"
+    },
+    {
+      "nombre": "Lago",
+      "valor_default": "3mts"
+    }
+  ],
+  "GABINETES": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Tipo",
+      "valor_default": "ATX Tower"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    },
+    {
+      "nombre": "Peso (Grs)"
+    },
+    {
+      "nombre": "Leds",
+      "valor_default": "SI RGB"
+    },
+    {
+      "nombre": "Número de ventiladores"
+    },
+    {
+      "nombre": "Tarjeta Madre Soportada:"
+    },
+    {
+      "nombre": "Panel Frontal:",
+      "valor_default": "USB 3.0: 2\nUSB 2.0: 1"
+    },
+    {
+      "nombre": "Expansiones",
+      "valor_default": "Bahias int 3.5”: 2\nBahias int 2.5”: 2"
+    },
+    {
+      "nombre": "Ventilador Frontal:",
+      "valor_default": "120mm led"
+    },
+    {
+      "nombre": "Ventilador Trasero:",
+      "valor_default": "120mm led"
+    },
+    {
+      "nombre": "Ventilador Lateral:",
+      "valor_default": "NO"
+    },
+    {
+      "nombre": "Fuente de Poder",
+      "valor_default": "650W / NO"
+    },
+    {
+      "nombre": "Tarjetas de Video de hasta:",
+      "valor_default": "340mm"
+    },
+    {
+      "nombre": "Disipador de CPU:",
+      "valor_default": "160mm"
+    },
+    {
+      "nombre": "Paneles de vidrio",
+      "valor_default": "1 lateral"
+    },
+    {
+      "nombre": "Patas",
+      "valor_default": "15mm"
+    },
+    {
+      "nombre": "Display LCD",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Soporta watercooling",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Incluye kit",
+      "valor_default": "MOUSE, PARLANTES, TECLADO"
+    }
+  ],
+  "FUENTES": [
+    {
+      "nombre": "Wataje",
+      "valor_default": "500 Watts"
+    },
+    {
+      "nombre": "Ventilador",
+      "valor_default": "120mm"
+    },
+    {
+      "nombre": "Hold Up Time",
+      "valor_default": "17ms"
+    },
+    {
+      "nombre": "Protección contra",
+      "valor_default": "• Protección de Sobrevoltaje\n• Protección de Sobrecarga  \n• Protección de Temperatura\n• Protección de Perdida de Voltaje\n• Protección de Corto Circuito"
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "• 1 x Conector principal de 20+4 = 24 pines\n• 1 x Conector de poder de +12V de 4+4 pines\n• 1 x Conector PCI-Express de 6 pines\n• 1 x Conector PCI-Express de 6+2 pines\n• 4 x Conectores Molex de 4 pines para perifericos\n• 6 x Conectores SATA\n• 1 x Conector de unidad Floppy de 4 pines"
+    },
+    {
+      "nombre": "Certificación de eficiencia",
+      "valor_default": "80 PLUS BRONZE"
+    },
+    {
+      "nombre": "LED RGB",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Entrada de corriente",
+      "valor_default": "220/240V"
+    },
+    {
+      "nombre": "Frecuencia",
+      "valor_default": "50 / 60HZ"
+    },
+    {
+      "nombre": "Factor de forma",
+      "valor_default": "ATX 12V 2.3"
+    }
+  ],
+  "MEMORIA": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "MEMOX MXDD404240017XC8R"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "8GB"
+    },
+    {
+      "nombre": "Tecnología",
+      "valor_default": "DDR3-21300"
+    },
+    {
+      "nombre": "Uso",
+      "valor_default": "Notebook"
+    },
+    {
+      "nombre": "Tipo de módulo",
+      "valor_default": "U-DIMM / SO-DIMM"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "3000 Mhz"
+    },
+    {
+      "nombre": "Módulos",
+      "valor_default": "1 (8 X 512MB)"
+    },
+    {
+      "nombre": "Latencia",
+      "valor_default": "CL19"
+    },
+    {
+      "nombre": "Voltaje",
+      "valor_default": "1.35V"
+    }
+  ],
+  "MICROPROCESADORES": [
+    {
+      "nombre": "Gráficos del procesador",
+      "valor_default": "Procesador Intel® Core ™ i5-8400"
+    },
+    {
+      "nombre": "SOCKET",
+      "valor_default": "AM4 / 1151 / 1150"
+    },
+    {
+      "nombre": "Cantidad de núcleos",
+      "valor_default": "6.0"
+    },
+    {
+      "nombre": "Frecuencia básica del procesador",
+      "valor_default": "2.80 ghx"
+    },
+    {
+      "nombre": "Frecuencia turbo máxima",
+      "valor_default": "4.00 Ghz"
+    },
+    {
+      "nombre": "Caché",
+      "valor_default": "9 MB"
+    },
+    {
+      "nombre": "Velocidad del bus",
+      "valor_default": "8 GT/s"
+    },
+    {
+      "nombre": "Tamaño máximo de memoria",
+      "valor_default": "128 GB"
+    },
+    {
+      "nombre": "Tipos de memoria",
+      "valor_default": "DDR4-2666"
+    },
+    {
+      "nombre": "Memoria máxima de gráficos (frecuencia de gráficos)",
+      "valor_default": "64 GB"
+    },
+    {
+      "nombre": "Socket",
+      "valor_default": "FCLGA1151"
+    },
+    {
+      "nombre": "TDP",
+      "valor_default": "65 Watts"
+    }
+  ],
+  "MOTHERBOARDS": [
+    {
+      "nombre": "Soporta procesadores",
+      "valor_default": "for 8th Generation Core™ i7/Core™ i5/Core™ i3/Pentium®/Celeron"
+    },
+    {
+      "nombre": "Socket",
+      "valor_default": "AM4"
+    },
+    {
+      "nombre": "Consumo procesador Hasta",
+      "valor_default": "105W"
+    },
+    {
+      "nombre": "Slot de memoria",
+      "valor_default": "2 x DIMM, Max. 32GB, DDR4 2666/2400/2133 MHz Non-ECC, Un-buffered"
+    },
+    {
+      "nombre": "Máxima capacidad de memoria",
+      "valor_default": "64GB"
+    },
+    {
+      "nombre": "VGA Integrada",
+      "valor_default": "Intel® HD Graphics:"
+    },
+    {
+      "nombre": "Interfaz de almacenamiento",
+      "valor_default": "4 x conector SATA 6Gb/s"
+    },
+    {
+      "nombre": "Slot de expansión",
+      "valor_default": "1 x PCIe 3.0/2.0 x16 (x16 mode, gray)\n2 x PCIe 2.0 x1"
+    },
+    {
+      "nombre": "Opciones de salida de gráficos",
+      "valor_default": "Multi-VGA output support : HDMI/D-Sub ports"
+    },
+    {
+      "nombre": "Audio",
+      "valor_default": "Realtek® ALC887 8-Channel High Definition Audio CODEC"
+    },
+    {
+      "nombre": "LAN",
+      "valor_default": "Realtek® RTL8111H, 1 x Gigabit LAN Controller(s)"
+    },
+    {
+      "nombre": "Conectores frontales",
+      "valor_default": "2 x USB 3.1 Gen1, 4 x USB 2.0"
+    },
+    {
+      "nombre": "Conectores traseros",
+      "valor_default": "1 x puerto de teclado / ratón PS / 2\n1 x puerto D-Sub\n1 x puerto DVI-D\n1 x puerto HDMI\n4 x puertos USB 3.1 Gen 1\n2 x puertos USB 3.1 Gen 2 tipo A (rojo)\n2 x puertos USB 2.0 / 1.1\n1 x puerto RJ-45\n3 x conectores de audio (Line In, Line Out, Mic In)"
+    },
+    {
+      "nombre": "Conectores internos",
+      "valor_default": "1 conector de alimentación principal ATX de 24 pines\n1 x conector de alimentación ATX 12V de 8 clavijas\n1 x conector M.2 Socket 3\n6 x conectores SATA 6Gb / s\n1 x encabezado del ventilador de la CPU\n2 x cabezales de ventilador del sistema\n1 x cabecera del panel frontal\n1 x encabezado de audio del panel frontal\n1 x encabezado de salida S / PDIF\n1 x USB 3.1 Gen 1 encabezado\n2 x encabezados USB 2.0 / 1.1\n1 x encabezado del Módulo de plataforma segura (TPM)\n2 x encabezados de puerto serie\n1 x encabezado de puerto paralelo\n1 x claro puente CMOS"
+    },
+    {
+      "nombre": "Formato",
+      "valor_default": "Micro ATX"
+    },
+    {
+      "nombre": "Sistema Operativo",
+      "valor_default": "Windows 10 de 64 bits\nCompatibilidad con Windows 7 de 64 bits"
+    }
+  ],
+  "PLACAS DE VIDEO": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "ASUS Geforce GT1030"
+    },
+    {
+      "nombre": "Procesador gráfico",
+      "valor_default": "GP108-300-A1"
+    },
+    {
+      "nombre": "Resolución Digital Máxima",
+      "valor_default": "1920x1200"
+    },
+    {
+      "nombre": "Memoria de video",
+      "valor_default": "GDDR5 2GB"
+    },
+    {
+      "nombre": "Frecuencia del procesador",
+      "valor_default": "1228 MHz"
+    },
+    {
+      "nombre": "Bus de memoria",
+      "valor_default": "256 bits"
+    },
+    {
+      "nombre": "Velocidad de memoria del reloj",
+      "valor_default": "6008 MHz"
+    },
+    {
+      "nombre": "Interfaz de memoria",
+      "valor_default": "64 bits"
+    },
+    {
+      "nombre": "Tipo de interfaz",
+      "valor_default": "PCI Express 3.0"
+    },
+    {
+      "nombre": "Puertos de salida",
+      "valor_default": "Yes x 1 (Native) (DVI-D)\nYes x 1 (Native) (HDMI 2.0)\nYes x 1 (Native) (Display Port 1.4)"
+    },
+    {
+      "nombre": "Power Connectors:",
+      "valor_default": "1 x 6-pin"
+    },
+    {
+      "nombre": "Software:",
+      "valor_default": "ASUS GPU Tweak II & Driver"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "17.3 x 6.9 x4 Centimetros"
+    }
+  ],
+  "PLACAS DE PC": [
+    {
+      "nombre": "Puertos de salida",
+      "valor_default": "Puerto COM"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "PCI-e"
+    },
+    {
+      "nombre": "Sistema Operativo",
+      "valor_default": "Compatible con Microsoft Windows® 10 64-bit / 8.1 32-bit / 8.1 64-bit / 8 32-bit / 8 64-bit / 7 32-bit / 7 64-bit"
+    },
+    {
+      "nombre": "Puertos de entrada"
+    }
+  ],
+  "COOLERS": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Tamaño"
+    },
+    {
+      "nombre": "Velocidad"
+    },
+    {
+      "nombre": "LED",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "GPS": [
+    {
+      "nombre": "Porducto",
+      "valor_default": "GPS"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Garmin z2420"
+    },
+    {
+      "nombre": "Pantalla",
+      "valor_default": "5\" TOUCH"
+    },
+    {
+      "nombre": "Mapas instalados",
+      "valor_default": "Argentina, Chile, Uruguay y Paraguay"
+    },
+    {
+      "nombre": "Indicaciones por voz",
+      "valor_default": "Si"
+    },
+    {
+      "nombre": "Avisos",
+      "valor_default": "curvas pronunciadas, zonas escolares, cambios en los límites de velocidad, pasos a nivel, pasos de animales"
+    },
+    {
+      "nombre": "Alertas",
+      "valor_default": "Radares de semáforos en rojo y velocidad"
+    },
+    {
+      "nombre": "Bluetooth",
+      "valor_default": "Si"
+    }
+  ],
+  "CALCULADORA": [
+    {
+      "nombre": "Tipo de uso",
+      "valor_default": "Calculadora escritorio"
+    },
+    {
+      "nombre": "Dígitos",
+      "valor_default": "12.0"
+    },
+    {
+      "nombre": "Separación de miles",
+      "valor_default": "punto"
+    },
+    {
+      "nombre": "Funciones/teclas",
+      "valor_default": "Cálculo e impresión automática del precio más el impuesto, precio menos el impuesto, descuento, precio de venta, importe de impuesto, importe de descuento e importe de margen de ganancia. Le permite calcular el costo, precio de venta y margen de ganancia de un artículo, dados los otros dos valores. La tecla \"%\" proporciona rápido acceso a precios y ganancias, como también ofrece alzas, descuentos, relaciones y valores de aumento o disminución"
+    },
+    {
+      "nombre": "Visor",
+      "valor_default": "luminoso"
+    },
+    {
+      "nombre": "Fecha y hora",
+      "valor_default": "No especifica"
+    },
+    {
+      "nombre": "Impresión",
+      "valor_default": "No"
+    },
+    {
+      "nombre": "Material teclas/cubierta",
+      "valor_default": "Teclas plásticas/Cubierta de metal"
+    },
+    {
+      "nombre": "Tinta",
+      "valor_default": "No aplica"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "No aplica"
+    },
+    {
+      "nombre": "Alimentacion",
+      "valor_default": "Pila/Solar"
+    }
+  ],
+  "CAMARA FOTO": [
+    {
+      "nombre": "Resolución",
+      "valor_default": "20.4 Megapíxel"
+    },
+    {
+      "nombre": "Marca del lente",
+      "valor_default": "HP"
+    },
+    {
+      "nombre": "Tipo sensor óptico",
+      "valor_default": "Exmor R CMOS / CCD"
+    },
+    {
+      "nombre": "Tamaño del sensor óptico",
+      "valor_default": "1/2.3\""
+    },
+    {
+      "nombre": "Conexión inalámbrica",
+      "valor_default": "IEEE 802.11b/g/n, NFC (Near Field Communication)"
+    },
+    {
+      "nombre": "Zoom óptico",
+      "valor_default": "50 x"
+    },
+    {
+      "nombre": "Zoom digital",
+      "valor_default": "4 x"
+    },
+    {
+      "nombre": "Tamaño de pantalla (pulgadas)",
+      "valor_default": "3\""
+    },
+    {
+      "nombre": "Procesador de imágenes",
+      "valor_default": "BIONZ X"
+    },
+    {
+      "nombre": "Estabilizador de imagen",
+      "valor_default": "Óptica (Disparo estable con Modo activo inteligente)"
+    },
+    {
+      "nombre": "Enfoque automático",
+      "valor_default": "Detección de contraste TTL"
+    },
+    {
+      "nombre": "Número de puntos de enfoque automático (Zonas)",
+      "valor_default": "9.0"
+    },
+    {
+      "nombre": "Formato vídeo digital",
+      "valor_default": "AVCHD, H.264"
+    },
+    {
+      "nombre": "Formato de grabación de imágenes",
+      "valor_default": "JPEG"
+    },
+    {
+      "nombre": "Resolución máxima del vídeo",
+      "valor_default": "1920 x 1080 (FHD)"
+    },
+    {
+      "nombre": "Interfaces AV",
+      "valor_default": "Vídeo/audio compuesto / HDMI / USB"
+    },
+    {
+      "nombre": "Almacenamiento",
+      "valor_default": "Memoria SD"
+    },
+    {
+      "nombre": "Expansión de memoria",
+      "valor_default": "hasta 64GB"
+    },
+    {
+      "nombre": "Funciones",
+      "valor_default": "Face detection / Smile detection /"
+    },
+    {
+      "nombre": "Distancia Mínima",
+      "valor_default": "50 mm (Formato Panorámico)"
+    },
+    {
+      "nombre": "Rango de Distancia Focal Mínima",
+      "valor_default": "4.3 mm (Formato Panorámico)"
+    },
+    {
+      "nombre": "Rango de Distancia Focal Máxima",
+      "valor_default": "24 mm (Formato Panorámico)"
+    }
+  ],
+  "VEHICULOS ELECTRICOS": [
+    {
+      "nombre": "Producto",
+      "valor_default": "Bicicleta eléctrica"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Mobox EVOLT 16N"
+    },
+    {
+      "nombre": "Modo de arranque",
+      "valor_default": "Envión / acelerador"
+    },
+    {
+      "nombre": "Autonomía",
+      "valor_default": "20Km"
+    },
+    {
+      "nombre": "Tipo de freno",
+      "valor_default": "eABS"
+    },
+    {
+      "nombre": "Suspensión",
+      "valor_default": "Trasera"
+    },
+    {
+      "nombre": "Color",
+      "valor_default": "Blanco y negro"
+    },
+    {
+      "nombre": "Velocidad máxima",
+      "valor_default": "25Km/h"
+    },
+    {
+      "nombre": "Material del vehículo",
+      "valor_default": "Aleación de aluminio"
+    },
+    {
+      "nombre": "Tipo de vehículo",
+      "valor_default": "Plegable y portátil"
+    },
+    {
+      "nombre": "Ruedas",
+      "valor_default": "Neumático macizo / Neumático inflable 16\""
+    },
+    {
+      "nombre": "Peso máximo soportado por el vehículo",
+      "valor_default": "125kgs"
+    },
+    {
+      "nombre": "Dimensiones del paquete",
+      "valor_default": "55 x 115 x 20 cm"
+    },
+    {
+      "nombre": "Peso del paquete",
+      "valor_default": "15Kgs"
+    },
+    {
+      "nombre": "Potencia",
+      "valor_default": "250W"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "de litio 4.4 mAH"
+    },
+    {
+      "nombre": "Luz frontal",
+      "valor_default": "Led frontal de gran poder"
+    }
+  ],
+  "TABLA DIGITALIZADORA O TABLETA": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "WACOM SMALL CTL472K1A"
+    },
+    {
+      "nombre": "Dimensiones del área de trabajo",
+      "valor_default": "152.0 x 95.0 mm"
+    },
+    {
+      "nombre": "Multitouch",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "USB"
+    },
+    {
+      "nombre": "Lápiz",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Incluye puntas de repuesto",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Tipo de lápiz",
+      "valor_default": "Sensible a la presión, inalámbrico y sin pilas"
+    },
+    {
+      "nombre": "Niveles de presión",
+      "valor_default": "2048.0"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "2540 lpi"
+    },
+    {
+      "nombre": "Dimensiones de la tableta",
+      "valor_default": "210 x 146 x 8.7 mm"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "251 grs"
+    }
+  ],
+  "LINTERNAS": [
+    {
+      "nombre": "Potencia máxima",
+      "valor_default": "10W"
+    },
+    {
+      "nombre": "Tamaño",
+      "valor_default": "14 x 20 cm"
+    },
+    {
+      "nombre": "Recargable",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Método de carga",
+      "valor_default": "Toma 12v del auto o trafo 12v de pared (no incluído)"
+    },
+    {
+      "nombre": "Máxima duración",
+      "valor_default": "5hs"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "3.6v 600MA"
+    },
+    {
+      "nombre": "Color de Luz",
+      "valor_default": "FRÍA / CÁLIDA"
+    },
+    {
+      "nombre": "Vida útil",
+      "valor_default": "50000 horas"
+    },
+    {
+      "nombre": "Interior / exterior",
+      "valor_default": "INTERIOR / EXTERIOR IP66"
+    },
+    {
+      "nombre": "Apertura del haz",
+      "valor_default": "120º"
+    },
+    {
+      "nombre": "Flujo lumínico",
+      "valor_default": "400 lúmenes"
+    }
+  ],
+  "LAMPARAS": [
+    {
+      "nombre": "Producto",
+      "valor_default": "BOMBILLA DE LUZ"
+    },
+    {
+      "nombre": "Marca",
+      "valor_default": "VERBATIM"
+    },
+    {
+      "nombre": "nitidez",
+      "valor_default": "6500K"
+    },
+    {
+      "nombre": "Consumo",
+      "valor_default": "9w"
+    },
+    {
+      "nombre": "Equivalencia",
+      "valor_default": "75W"
+    },
+    {
+      "nombre": "Horas de uso",
+      "valor_default": "15000.0"
+    },
+    {
+      "nombre": "Color",
+      "valor_default": "CÁLIDA / FRIA"
+    }
+  ],
+  "TRANSMISOR FM": [
+    {
+      "nombre": "Pantalla",
+      "valor_default": "1.4\""
+    },
+    {
+      "nombre": "Conectores",
+      "valor_default": "USB - MICRO SD"
+    },
+    {
+      "nombre": "Sintoniza FM",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Formatos",
+      "valor_default": "MP3/WMA"
+    },
+    {
+      "nombre": "Alimentacion",
+      "valor_default": "12 - 24v"
+    },
+    {
+      "nombre": "Control remoto",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "EXTRAS",
+      "valor_default": "PERMITE LEER CARPETAS"
+    }
+  ],
+  "TECLADOS": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Color",
+      "valor_default": "Negro"
+    },
+    {
+      "nombre": "Mecanismo de teclado",
+      "valor_default": "Membrana / Mecánico"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "USB / PS2 / Wireless"
+    },
+    {
+      "nombre": "Receptor",
+      "valor_default": "NANO / MINI"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "300mAh / 2 pilas AA"
+    },
+    {
+      "nombre": "Tipo de teclas",
+      "valor_default": "Cóncavas / Planas"
+    },
+    {
+      "nombre": "Multimedia",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Media center",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Teclas rápidas",
+      "valor_default": "14.0"
+    },
+    {
+      "nombre": "Idioma",
+      "valor_default": "Español"
+    },
+    {
+      "nombre": "Características adicionales",
+      "valor_default": "Resistente al agua"
+    },
+    {
+      "nombre": "Tecnología de cifrado al receptor",
+      "valor_default": "SI (Logitech)"
+    },
+    {
+      "nombre": "Reposamuñecas",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Compatible con los sistemas operativos",
+      "valor_default": "Windows 8, 10 o posterior"
+    },
+    {
+      "nombre": "Teclado numérico",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Cantidad de teclas"
+    },
+    {
+      "nombre": "Largo de cable"
+    },
+    {
+      "nombre": "Dimensiones"
+    },
+    {
+      "nombre": "Peso"
+    }
+  ],
+  "MOUSES": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "USB / PS2 / Wireless"
+    },
+    {
+      "nombre": "Cable",
+      "valor_default": "retráctil / 1.8mts"
+    },
+    {
+      "nombre": "Sensor",
+      "valor_default": "Óptico / Laser"
+    },
+    {
+      "nombre": "Frecuencia",
+      "valor_default": "2.4 GHz"
+    },
+    {
+      "nombre": "Cantidad de botones",
+      "valor_default": "Tres (izquierda, derecha y central con desplazamiento)"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "(DPI) 800, 1000, 1600"
+    },
+    {
+      "nombre": "Fracuencia",
+      "valor_default": "30 Gs"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "130 IPS"
+    },
+    {
+      "nombre": "Velocidad de cuadros",
+      "valor_default": "6500 fps"
+    },
+    {
+      "nombre": "Colores",
+      "valor_default": "Azul, Rojo, Magenta, Verde, Turquesa"
+    },
+    {
+      "nombre": "Retroiluminación",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Compatible con los sistemas operativos",
+      "valor_default": "Win 10, Windows 7, Vista, XP"
+    },
+    {
+      "nombre": "Dimensiones (mm)"
+    },
+    {
+      "nombre": "Peso (grs)"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "1 PILA AA"
+    }
+  ],
+  "CABLES Y ADAPTADORES": [
+    {
+      "nombre": "Estándar",
+      "valor_default": "USB A MICRO USB"
+    },
+    {
+      "nombre": "Conexión de entrada",
+      "valor_default": "USB 2.0 MACHO"
+    },
+    {
+      "nombre": "Conexión de salida",
+      "valor_default": "USB 2.0 MICRO"
+    },
+    {
+      "nombre": "Resolución soportada",
+      "valor_default": "4K / HD / FHD"
+    },
+    {
+      "nombre": "Versión HDMI",
+      "valor_default": "V1.4 / V1.3 / V2.0"
+    },
+    {
+      "nombre": "Material conector",
+      "valor_default": "revestimiento niquelado"
+    },
+    {
+      "nombre": "Contactos con baño de oro",
+      "valor_default": "SI  / NO"
+    },
+    {
+      "nombre": "Material del cable",
+      "valor_default": "Forro de PVC"
+    },
+    {
+      "nombre": "Conductores con calibre",
+      "valor_default": "28.0"
+    },
+    {
+      "nombre": "Blindado",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Resistencia de voltaje",
+      "valor_default": "300 VDC 10 ms"
+    },
+    {
+      "nombre": "Largo del cable (mts)",
+      "valor_default": "1.8 mts"
+    }
+  ],
+  "SOPORTES DE TV": [
+    {
+      "nombre": "Tamaño de pantalla",
+      "valor_default": "32-55"
+    },
+    {
+      "nombre": "Peso Máximo",
+      "valor_default": "50Kgs"
+    },
+    {
+      "nombre": "VESA",
+      "valor_default": "400 x 400"
+    },
+    {
+      "nombre": "Distacia a la pared",
+      "valor_default": "230mm"
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Acero"
+    },
+    {
+      "nombre": "Brazos articulados",
+      "valor_default": "NO - 1 - 2"
+    },
+    {
+      "nombre": "Desplazamiento vertical",
+      "valor_default": "\"+-20º\""
+    },
+    {
+      "nombre": "Desplazamiento horizontal",
+      "valor_default": "\"+-20º\""
+    }
+  ],
+  "SOPORTES VARIOS": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "NISUTA NSSOCEJ"
+    },
+    {
+      "nombre": "Soporte para",
+      "valor_default": "Celular"
+    },
+    {
+      "nombre": "Tamaño de pantalla",
+      "valor_default": "6.5\""
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "Plástico"
+    },
+    {
+      "nombre": "Extras",
+      "valor_default": "Orificio para puerto de carga"
+    }
+  ],
+  "MOCHILAS - BOLSOS - FUNDAS": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "CASELOGIC LODP-114"
+    },
+    {
+      "nombre": "Tamaño pantalla de equipo",
+      "valor_default": "14\""
+    },
+    {
+      "nombre": "Compartimento para tablet",
+      "valor_default": "SI/NO"
+    },
+    {
+      "nombre": "Bolsillos",
+      "valor_default": "Bolsillos externos de fácil acceso con cierre a presión magnético para accesorios.\nBolsillos internos y externos con cremallera para ofrecer un almacenamiento extraseguro."
+    },
+    {
+      "nombre": "Material",
+      "valor_default": "lona de algodón de alta calidad"
+    },
+    {
+      "nombre": "Correas acolchadas",
+      "valor_default": "SI/NO"
+    },
+    {
+      "nombre": "Cierres",
+      "valor_default": "Ganchos de cremallera de cuero legítimo"
+    },
+    {
+      "nombre": "EXTRAS",
+      "valor_default": "Bolsillos para botellas de agua"
+    }
+  ],
+  "LÁMPARAS DE ESCRITORIO": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "NISUTA NSUSBLR05"
+    },
+    {
+      "nombre": "Potencia",
+      "valor_default": "4w"
+    },
+    {
+      "nombre": "Lúmenes:",
+      "valor_default": "250.0"
+    },
+    {
+      "nombre": "Temperatura del color",
+      "valor_default": "4000~4500k (neutra)"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "SI/NO"
+    },
+    {
+      "nombre": "Duración de la baterís",
+      "valor_default": "entre 25 y 6 hs"
+    },
+    {
+      "nombre": "Largo de cable",
+      "valor_default": "1m"
+    }
+  ],
+  "CARGADORES DE NOTEBOOK": [
+    {
+      "nombre": "MARCA Y MODELO",
+      "valor_default": "SH-CNF90W-2"
+    },
+    {
+      "nombre": "VOLTS",
+      "valor_default": "19.0"
+    },
+    {
+      "nombre": "AMPER",
+      "valor_default": "4.74"
+    },
+    {
+      "nombre": "WATTS",
+      "valor_default": "90.0"
+    },
+    {
+      "nombre": "TIP",
+      "valor_default": "2019-05-05 00:00:00"
+    },
+    {
+      "nombre": "GROSOR",
+      "valor_default": "2.5MM"
+    },
+    {
+      "nombre": "COMPATIBLE CON EQUIPOS",
+      "valor_default": "ACER / TOSHIBA / DELL / HP / COMPAQ"
+    }
+  ],
+  "PILAS": [
+    {
+      "nombre": "MARCA"
+    },
+    {
+      "nombre": "TIPO",
+      "valor_default": "AAA / AA / 2032"
+    },
+    {
+      "nombre": "POTENCIA"
+    },
+    {
+      "nombre": "RECARGABLE",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "PRECIO POR UNIDAD",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "POWERBANKS": [
+    {
+      "nombre": "PRODUCTO"
+    },
+    {
+      "nombre": "MARCA Y MODELO"
+    },
+    {
+      "nombre": "TIPO DE BATERÍA",
+      "valor_default": "IONES DE LITIO"
+    },
+    {
+      "nombre": "CAPACIDAD",
+      "valor_default": "5200 mAh"
+    },
+    {
+      "nombre": "ENTRADA",
+      "valor_default": "Micro USB, 5V/1000mA (Máx.)"
+    },
+    {
+      "nombre": "SALIDA",
+      "valor_default": "Micro USB, 5V/2000mA"
+    },
+    {
+      "nombre": "Puertos de carga inteligente",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "MATERIAL",
+      "valor_default": "METAL"
+    },
+    {
+      "nombre": "DIMENSIONES (MM)"
+    },
+    {
+      "nombre": "PESO (GRS)"
+    }
+  ],
+  "WEBCAM": [
+    {
+      "nombre": "Producto",
+      "valor_default": "Webcam"
+    },
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Genius Facecam 1000x"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "720P"
+    },
+    {
+      "nombre": "Tipo sensor óptico",
+      "valor_default": "CMOS de píxeles de alta definición 720p"
+    },
+    {
+      "nombre": "Formato vídeo digital",
+      "valor_default": "AVI/WMV"
+    },
+    {
+      "nombre": "Micrófono",
+      "valor_default": "SI"
+    },
+    {
+      "nombre": "Resolución máxima del vídeo",
+      "valor_default": "1MP, 1280 x 720, 640 x 480 pixels"
+    },
+    {
+      "nombre": "Distancia Mínima",
+      "valor_default": "50 mm (Formato Panorámico)"
+    },
+    {
+      "nombre": "Dimensiones",
+      "valor_default": "20 x 22 x 60 mm"
+    },
+    {
+      "nombre": "Peso",
+      "valor_default": "50 g"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "USB"
+    }
+  ],
+  "LIMPIADORES": [
+    {
+      "nombre": "Marca y modelo",
+      "valor_default": "Nisuta NSESLI"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "440CC/400G"
+    },
+    {
+      "nombre": "Superficies",
+      "valor_default": "Ideal para limpieza de gabinetes y superficies plásticas.Permite limpiar supeficies rugosas para dejarlas con brillo y terminación."
+    },
+    {
+      "nombre": "Otras prestaciones",
+      "valor_default": "Acabado siliconado"
+    }
+  ],
+  "CD DVD": [
+    {
+      "nombre": "Formato",
+      "valor_default": "CD / DVD"
+    },
+    {
+      "nombre": "Marca",
+      "valor_default": "GENERICO"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "700MB"
+    },
+    {
+      "nombre": "Duración",
+      "valor_default": "80 minutos"
+    },
+    {
+      "nombre": "Velocidad",
+      "valor_default": "52X"
+    },
+    {
+      "nombre": "Rewritable",
+      "valor_default": "NO"
+    }
+  ],
+  "PUNTERO": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Interfaz",
+      "valor_default": "WIFI / BLUETOOTH"
+    },
+    {
+      "nombre": "Receptor WIFI",
+      "valor_default": "USB"
+    },
+    {
+      "nombre": "Wireless",
+      "valor_default": "2.4GHZ"
+    },
+    {
+      "nombre": "Cantidad de botones",
+      "valor_default": "5.0"
+    },
+    {
+      "nombre": "Batería",
+      "valor_default": "PILAS AAA / BATERIA 200mAh"
+    },
+    {
+      "nombre": "Distancia máxima de señal inalámbrica",
+      "valor_default": "10mts"
+    },
+    {
+      "nombre": "Controla puntero del mouse",
+      "valor_default": "SI / NO"
+    }
+  ],
+  "GRASA SILICONADA": [
+    {
+      "nombre": "Marca y modelo"
+    },
+    {
+      "nombre": "Capacidad",
+      "valor_default": "5cc"
+    },
+    {
+      "nombre": "Presentación",
+      "valor_default": "JERINGA - POTE - SOBRE"
+    }
+  ],
+  "SWITCHES O SWITCHS": [
+    {
+      "nombre": "Standard",
+      "valor_default": "conmutador HDMI"
+    },
+    {
+      "nombre": "Entrada",
+      "valor_default": "HDMI"
+    },
+    {
+      "nombre": "Salida",
+      "valor_default": "HDMI"
+    },
+    {
+      "nombre": "Resolución",
+      "valor_default": "HD / FHD"
+    },
+    {
+      "nombre": "Audio",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Cables incluídos",
+      "valor_default": "SI / NO"
+    },
+    {
+      "nombre": "Alimentaión",
+      "valor_default": "220v"
+    }
+  ],
+  "BAMBULAB A1": [
+    {
+      "nombre": "Tecnología de impresión: FDM (Modelado por deposición fundida)"
+    },
+    {
+      "nombre": "Materiales (Filamentos): PLA, PETG, TPU, PVA"
+    },
+    {
+      "nombre": "Área de impresión: 256 x 256 x 256 mm³"
+    },
+    {
+      "nombre": "Velocidad de Impresión: 500 mm/s"
+    },
+    {
+      "nombre": "Diámetro del filamento: 1.75mm"
+    },
+    {
+      "nombre": "Extrusora: Extrusor en Acero reforzado"
+    },
+    {
+      "nombre": "Diámetro de la boquilla: Standar: 0,4 milímetros. Opcional:0,2 mm, 0,6 mm, 0,8 mm"
+    },
+    {
+      "nombre": "Características diferenciales: Opción de Imprimir multicolor, calibración completamente automática, precisión de alta velocidad 10000 mm/s² aceleración, imprima en silencio 48 dB, A1 automatizó completamente el proceso de carga/descarga, boquillas de intercambio rápido, calidad coreXY."
+    }
+  ],
+  "Elegoo Neptune 4 Plus": [
+    {
+      "nombre": "Área de impresión 32 x 32 x 37 cm"
+    },
+    {
+      "nombre": "Velocidad de Impresión: 500 mm/s"
+    },
+    {
+      "nombre": "Tecnología de impresión: FFF – FDM – LPD"
+    },
+    {
+      "nombre": "Tipo de extrusora: Direct Drive Extruder"
+    },
+    {
+      "nombre": "Tipo de Cama\tMagnética Acero"
+    }
+  ]
+}

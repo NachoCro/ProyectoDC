@@ -1,0 +1,9 @@
+requests>=2.31
+python-dotenv>=1.0
+flask>=3.0
+sentence-transformers>=2.2
+deep-translator>=1.11
+numpy>=1.24
+beautifulsoup4>=4.12
+lxml>=5.0
+ddgs>=9.0

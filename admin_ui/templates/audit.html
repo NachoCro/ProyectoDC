@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Auditoría</h1>
+<p class="meta">{{ total }} registros</p>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>Fecha / Hora</th>
+      <th>Producto</th>
+      <th>Usuario</th>
+      <th>Acción</th>
+      <th>Detalle</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td>{{ e.timestamp }}</td>
+      <td>
+        <a href="{{ url_for('diff', pid=e.id_producto) }}">#{{ e.id_producto }}</a>
+      </td>
+      <td>{{ e.actor }}</td>
+      <td>
+        {% if e.accion == 'aprobado' %}
+          <span class="badge badge--ok">{{ e.accion }}</span>
+        {% elif e.accion == 'error' %}
+          <span class="badge badge--err">{{ e.accion }}</span>
+        {% elif e.accion == 'rechazado' %}
+          <span class="badge badge--warn">{{ e.accion }}</span>
+        {% else %}
+          <span class="badge badge--muted">{{ e.accion }}</span>
+        {% endif %}
+      </td>
+      <td class="cell--mono">{{ e.detalle or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="cell--empty">Sin registros</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a href="{{ url_for('audit', page=page-1) }}">← Anterior</a>
+  {% endif %}
+  <span>Página {{ page }} de {{ pages }}</span>
+  {% if page < pages %}
+    <a href="{{ url_for('audit', page=page+1) }}">Siguiente →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

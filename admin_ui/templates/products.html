@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Productos</h1>
+
+<div class="tabs">
+  <a class="tab {{ 'tab--active' if current_status == 'pending' }}"
+     href="{{ url_for('products', status='pending') }}">Pendientes</a>
+  <a class="tab {{ 'tab--active' if current_status == 'icecat_not_found' }}"
+     href="{{ url_for('products', status='icecat_not_found') }}">Sin Icecat</a>
+  <a class="tab {{ 'tab--active' if current_status == 'to_enrich' }}"
+     href="{{ url_for('products', status='to_enrich') }}">Sin procesar</a>
+  <a class="tab {{ 'tab--active' if current_status == 'approved' }}"
+     href="{{ url_for('products', status='approved') }}">Aprobados</a>
+  <a class="tab {{ 'tab--active' if current_status == 'errors' }}"
+     href="{{ url_for('products', status='errors') }}">Con errores</a>
+</div>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th></th>
+      <th>ID</th>
+      <th>Nombre</th>
+      <th>EAN</th>
+      <th>Marca</th>
+      <th>Modelo</th>
+      <th>Estado</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in products %}
+    <tr>
+      <td class="cell--thumb">
+        {% if p.imagen_url %}
+          <img src="{{ p.imagen_url }}" alt="" class="thumb"
+               onerror="this.style.display='none'">
+        {% endif %}
+      </td>
+      <td>{{ p.id_prestashop }}</td>
+      <td class="cell--name">{{ p.nombre or '—' }}</td>
+      <td><code>{{ p.ean or '—' }}</code></td>
+      <td>{{ p.marca or '—' }}</td>
+      <td>{{ p.modelo or '—' }}</td>
+      <td>
+        {% if p.estado_actualizacion == 'actualizado' %}
+          <span class="badge badge--ok">actualizado</span>
+        {% elif p.icecat_not_found %}
+          <span class="badge badge--warn">sin Icecat</span>
+        {% elif p.tiene_propuesta %}
+          <span class="badge badge--warn">pendiente</span>
+        {% elif p.product_not_found %}
+          <span class="badge badge--err">no encontrado</span>
+        {% else %}
+          <span class="badge badge--muted">pendiente</span>
+        {% endif %}
+      </td>
+      <td>
+        <a class="btn btn--sm" href="{{ url_for('diff', pid=p.id_prestashop) }}">Ver diff</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="cell--empty">No hay productos</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

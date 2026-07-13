@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Admin — PrestaShop ↔ Icecat{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="nav">
+    <a class="nav__brand" href="{{ url_for('dashboard') }}">⚡ Sync Admin</a>
+    <div class="nav__links">
+      <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+      <a href="{{ url_for('products') }}" {% if request.endpoint == 'products' %}class="active"{% endif %}>Productos</a>
+      <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}class="active"{% endif %}>Auditoría</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
