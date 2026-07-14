@@ -441,6 +441,31 @@ def extract():
 
 
 # ======================================================================
+# Run full pipeline (extract + enrich, same as main.py)
+# ======================================================================
+
+@app.route("/run-pipeline", methods=["POST"])
+def run_pipeline():
+    """Extract inactive products then enrich them — mirrors ``python main.py``."""
+    from middleware.extract import run as extract_run
+    from middleware.enrich import run as enrich_run
+
+    try:
+        pending = extract_run(dry_run=False)
+        enriched = enrich_run(dry_run=False)
+    except Exception as exc:
+        logger.error("Pipeline error: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({
+        "ok": True,
+        "inserted": len(pending),
+        "enriched": enriched,
+        "redirect": url_for("dashboard"),
+    })
+
+
+# ======================================================================
 # Audit log  (RF-14)
 # ======================================================================
 

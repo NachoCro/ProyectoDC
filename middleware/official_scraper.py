@@ -11,14 +11,150 @@ so the rest of the pipeline (merge → approve → push) works unchanged.
 import json
 import logging
 import time
+from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import API_SLEEP
 from .db import get_connection
 
 logger = logging.getLogger(__name__)
+
+SELENIUM_TIMEOUT = 12  # seconds to wait for spec tables to render
+BRAND_SEARCH_TIMEOUT = 10  # seconds to wait for search result cards
+
+# ── Brand search mapping ────────────────────────────────────────────────────
+
+_BRANDS_JSON = Path(__file__).resolve().parent.parent / "brands_mapping.json"
+_BRANDS_MAP: dict = {}
+try:
+    _BRANDS_MAP = json.loads(_BRANDS_JSON.read_text(encoding="utf-8"))
+except FileNotFoundError:
+    pass
+
+
+# ── Brand inference from product name ────────────────────────────────────────
+
+
+def _infer_brand_from_name(nombre: str) -> str | None:
+    """Infer the product brand from its name by matching against known brands.
+
+    Scans the product name (case-insensitive) for any brand key present in
+    ``brands_mapping.json``.  Returns the matched brand key (lowercase) or
+    ``None`` if no known brand is found.
+    """
+    if not nombre:
+        return None
+    nombre_lower = nombre.lower()
+    for brand_key in _BRANDS_MAP:
+        if brand_key in nombre_lower:
+            return brand_key
+    return None
+
+
+# ── Selenium driver factory ──────────────────────────────────────────────────
+
+
+def _create_driver() -> webdriver.Chrome:
+    """Return a headless Chrome WebDriver configured for scraping."""
+    opts = ChromeOptions()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=1920,1080")
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
+    return webdriver.Chrome(options=opts)
+
+
+# ── Brand site search ────────────────────────────────────────────────────────
+
+
+def _search_brand_site(marca: str, mpn: str, product_name: str) -> str | None:
+    """Search the brand's official site for a product and return the first result URL.
+
+    Uses the full *product_name* as the search query (more reliable than bare MPN)
+    by substituting the ``{mpn}`` placeholder in ``brands_mapping.json`` with the
+    full product name.
+
+    After navigating to the first result's page, validates that the MPN substring
+    appears somewhere in the rendered HTML text.  If it does not, the page is
+    likely a wrong match and ``None`` is returned so the next enrichment source
+    (Icecat) can be tried.
+
+    Returns the absolute URL of the first matching product card, or ``None``
+    if the brand has no search config, the search yields no results,
+    validation fails, or Selenium fails.
+    """
+    key = marca.strip().lower()
+    entry = _BRANDS_MAP.get(key)
+    if not entry:
+        return None
+
+    search_tpl = entry.get("search_url", "")
+    selector = entry.get("result_selector", "")
+    if not search_tpl or not selector:
+        return None
+
+    # Use the full product name as the search query — brand search pages
+    # handle natural-language queries better than bare MPNs.
+    search_url = search_tpl.replace("{mpn}", product_name)
+    logger.info("  BRAND_SEARCH  searching %s for name=%r (MPN=%s)", key, product_name, mpn)
+
+    driver = None
+    try:
+        driver = _create_driver()
+        driver.get(search_url)
+
+        WebDriverWait(driver, BRAND_SEARCH_TIMEOUT).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+        )
+        time.sleep(API_SLEEP)
+
+        el = driver.find_element(By.CSS_SELECTOR, selector)
+        href = el.get_attribute("href")
+        if not href:
+            logger.debug("  BRAND_SEARCH  first result has no href for %s %s", key, mpn)
+            return None
+
+        # ── MPN validation guardrail ──────────────────────────────────────
+        # Navigate to the result page and confirm the MPN actually appears
+        # in the rendered text — avoids scraping a completely wrong product.
+        # Skip validation when MPN is empty (name-only products).
+        if not mpn.strip():
+            logger.info("  BRAND_SEARCH  no MPN to validate — accepting %s", href)
+            return href
+
+        logger.info("  BRAND_SEARCH  navigated to %s — validating MPN", href)
+        driver.get(href)
+        time.sleep(API_SLEEP)
+        page_text = driver.page_source.lower()
+        mpn_lower = mpn.strip().lower()
+        if mpn_lower not in page_text:
+            logger.warning(
+                "  BRAND_SEARCH  MPN validation FAILED for %s — "
+                "MPN %r not found on page %s, skipping",
+                key, mpn, href,
+            )
+            return None
+
+        logger.info("  BRAND_SEARCH  MPN validated on page — returning %s", href)
+        return href
+    except Exception as exc:
+        logger.debug("  BRAND_SEARCH  %s %s failed: %s", key, mpn, exc)
+        return None
+    finally:
+        if driver is not None:
+            driver.quit()
 
 
 # ── Normalizer ──────────────────────────────────────────────────────────────
@@ -148,6 +284,65 @@ def _extract_tables(soup: BeautifulSoup) -> list[dict[str, str]]:
     return features
 
 
+def _extract_brand_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
+    """Extract specs from brand-specific dynamic containers.
+
+    Many manufacturer sites (Samsung, LG, etc.) render specs via JS into
+    custom component classes instead of standard ``<table>`` elements.
+    This function tries a curated list of known selectors and returns the
+    first set of results that yields at least one characteristic.
+    """
+    features: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    # ── Samsung: pdd32-product-spec components ────────────────────────────
+    for item in soup.select(".pdd32-product-spec__content-item"):
+        title_el = item.select_one(".pdd32-product-spec__content-item-title")
+        desc_el = item.select_one(".pdd32-product-spec__content-item-desc")
+        name = (title_el.get_text(strip=True) if title_el else "").strip()
+        value = (desc_el.get_text(strip=True) if desc_el else "").strip()
+        if not name or not value:
+            continue
+        key_norm = name.lower().strip()
+        if key_norm in seen:
+            continue
+        seen.add(key_norm)
+        features.append({"nombre": name, "valor": value})
+
+    if features:
+        return features
+
+    # ── LG: .result-info__spec-list ───────────────────────────────────────
+    for item in soup.select(".result-info__spec-list li, .pd-spec__item"):
+        text = item.get_text(strip=True)
+        if ":" in text:
+            name, _, value = text.partition(":")
+            name, value = name.strip(), value.strip()
+            if name and value:
+                key_norm = name.lower().strip()
+                if key_norm not in seen:
+                    seen.add(key_norm)
+                    features.append({"nombre": name, "valor": value})
+
+    if features:
+        return features
+
+    # ── Generic: dl/dt+dd pairs ───────────────────────────────────────────
+    for dl in soup.find_all("dl"):
+        dts = dl.find_all("dt")
+        dds = dl.find_all("dd")
+        for dt, dd in zip(dts, dds):
+            name = dt.get_text(strip=True)
+            value = dd.get_text(strip=True)
+            if name and value and len(name) >= 2 and len(value) >= 2:
+                key_norm = name.lower().strip()
+                if key_norm not in seen:
+                    seen.add(key_norm)
+                    features.append({"nombre": name, "valor": value})
+
+    return features
+
+
 # ── EAV writer ──────────────────────────────────────────────────────────────
 
 
@@ -185,7 +380,7 @@ def _write_eav(pid: int, caracteristicas: list[dict]) -> None:
         conn.close()
 
 
-# ── HTTP helper ─────────────────────────────────────────────────────────────
+# ── HTTP helper (kept for potential future use) ─────────────────────────────
 
 _SESSION = requests.Session()
 _SESSION.headers.update({
@@ -206,18 +401,6 @@ _SESSION.headers.update({
 })
 
 
-def _fetch(url: str) -> requests.Response | None:
-    try:
-        resp = _SESSION.get(url, timeout=30)
-        resp.raise_for_status()
-        return resp
-    except requests.RequestException as exc:
-        logger.debug("  OFFICIAL  HTTP error %s: %s", url, exc)
-        return None
-    finally:
-        time.sleep(API_SLEEP)
-
-
 # ════════════════════════════════════════════════════════════════════════════
 #  PUBLIC API — Manual URL enrichment (the only entry point)
 # ════════════════════════════════════════════════════════════════════════════
@@ -225,6 +408,9 @@ def _fetch(url: str) -> requests.Response | None:
 
 def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     """Fetch a verified official URL, parse it, and persist to EAV tables.
+
+    Uses a headless Chrome WebDriver to render JavaScript-heavy pages
+    (Samsung, LG, etc.) before parsing the static HTML with BeautifulSoup.
 
     Parameters
     ----------
@@ -249,12 +435,49 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     """
     logger.info("  MANUAL_URL  id=%d  fetching %s", product_id, url)
 
-    resp = _fetch(url)
-    if resp is None:
-        logger.warning("  MANUAL_URL  id=%d  fetch failed for %s", product_id, url)
-        return None
+    driver = None
+    try:
+        driver = _create_driver()
+        driver.set_script_timeout(SELENIUM_TIMEOUT)
+        driver.get(url)
 
-    soup = BeautifulSoup(resp.text, "lxml")
+        # Wait for technical spec tables or common spec containers to render.
+        # Many brand sites inject specs via JS; wait up to SELENIUM_TIMEOUT.
+        # Samsung uses .pdd32-product-spec__content-item for spec data.
+        try:
+            WebDriverWait(driver, SELENIUM_TIMEOUT).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR,
+                     "table, .specs, .specifications, .tech-specs, "
+                     ".pdd32-product-spec__content-item, "
+                     "[class*='spec'], [class*='Spec'], "
+                     "[data-testid*='spec'], [id*='spec']")
+                )
+            )
+        except Exception:
+            logger.debug(
+                "  MANUAL_URL  id=%d  no spec containers found within %ds, "
+                "proceeding with whatever rendered",
+                product_id, SELENIUM_TIMEOUT,
+            )
+
+        # Use JS execution instead of driver.page_source — Samsung's
+        # heavy pages often cause the /source endpoint to time out.
+        try:
+            page_source = driver.execute_script(
+                "return document.documentElement.outerHTML"
+            )
+        except Exception:
+            page_source = driver.page_source
+        time.sleep(API_SLEEP)
+    except Exception as exc:
+        logger.warning("  MANUAL_URL  id=%d  selenium fetch failed: %s", product_id, exc)
+        return None
+    finally:
+        if driver is not None:
+            driver.quit()
+
+    soup = BeautifulSoup(page_source, "lxml")
 
     # 1. Try JSON-LD (most structured)
     result = _extract_json_ld(soup)
@@ -267,14 +490,16 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
         logger.warning("  MANUAL_URL  id=%d  no product data found at %s", product_id, url)
         return None
 
-    # 3. Augment with HTML table specs (deduplicated merge)
+    # 3. Augment with brand-specific + HTML table specs (deduplicated merge)
+    brand_features = _extract_brand_specs(soup)
     table_features = _extract_tables(soup)
-    if table_features:
+    all_spec_features = brand_features + table_features
+    if all_spec_features:
         existing_names = {
             ch["nombre"].lower().strip()
             for ch in (result.get("caracteristicas") or [])
         }
-        for tf in table_features:
+        for tf in all_spec_features:
             if tf["nombre"].lower().strip() not in existing_names:
                 result["caracteristicas"].append(tf)
 

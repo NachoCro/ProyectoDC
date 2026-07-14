@@ -1,9 +1,10 @@
-"""Enrichment pipeline: DB cache → URL template → Icecat → translate → embed → score → store → push.
+"""Enrichment pipeline: DB cache → brand site search → Icecat → translate → embed → score → store → push.
 
 Automated pipeline tries sources in order:
 1. Local DB (existing ``icecat_json`` from previous run)
-2. URL template (brand mapping + MPN → direct scrape, no search engines)
+2. Brand site search (official site → first product result → scrape)
 3. Icecat (by EAN → Brand+MPN fallback)
+4. AI agent (DuckDuckGo web search, last resort)
 
 Manual URL enrichment is handled separately via the Admin UI
 (``scrape_from_direct_url``).
@@ -14,7 +15,6 @@ translation).
 
 import json
 import logging
-from pathlib import Path
 
 from .config import BATCH_SIZE
 from .db import get_connection, mark_not_found, mark_icecat_not_found
@@ -24,31 +24,6 @@ from .translate import translate_product
 from .characteristics import merge_characteristics
 
 logger = logging.getLogger(__name__)
-
-# ── URL template strategy ───────────────────────────────────────────────
-_BRANDS_JSON = Path(__file__).resolve().parent.parent / "brands_mapping.json"
-_BRANDS_URL_MAP: dict = {}
-try:
-    _BRANDS_URL_MAP = json.loads(_BRANDS_JSON.read_text(encoding="utf-8"))
-except FileNotFoundError:
-    pass
-
-
-def _build_url_template(marca: str, mpn: str) -> str | None:
-    """Build a direct product URL from brand template + MPN.
-
-    Returns ``None`` if the brand has no template or MPN is missing.
-    """
-    if not mpn:
-        return None
-    key = marca.strip().lower()
-    entry = _BRANDS_URL_MAP.get(key)
-    if not entry:
-        return None
-    template = entry.get("direct_url", "")
-    if not template:
-        return None
-    return template.replace("{mpn}", mpn)
 
 _NOT_FOUND = object()
 _TRANSIENT_ERROR = object()
@@ -218,11 +193,12 @@ def _fetch_and_prepare(
     """Fetch product data and prepare translated + scored payload.
 
     Automated pipeline tries sources in order:
-    1. URL template (brand mapping + MPN → direct scrape)
+    1. Brand site search (official site → first product result → scrape)
     2. Icecat by EAN
     3. Icecat by Brand + MPN
-    4. AI agent (web search + LLM extraction)
-    5. not_found / icecat_not_found
+    4. AI agent (web search + extraction, last resort before not-found)
+    5. Name-only search (infer brand from product name, search brand site)
+    6. not_found / icecat_not_found
 
     Returns ``(product_data, translated, icecat_desc)`` or
     ``(None, None, '')`` on failure.
@@ -231,16 +207,17 @@ def _fetch_and_prepare(
     tried = False
     was_not_found = False
 
-    # ── 0. URL template (deterministic, no API credits) ────────────────────
-    url = _build_url_template(marca, mpn)
-    if url and not dry_run:
-        from .official_scraper import scrape_from_direct_url
+    # ── 0. Brand site search (official site → product page → scrape) ──────
+    if marca and mpn and not dry_run:
+        from .official_scraper import _search_brand_site, scrape_from_direct_url
 
-        logger.info("  URL_TEMPLATE  id=%d  %s", pid, url)
-        product_data = scrape_from_direct_url(url, pid)
-        if product_data is not None:
-            n_chars = len(product_data.get("caracteristicas") or [])
-            logger.info("  URL_TEMPLATE  id=%d  succeeded (%d characteristics)", pid, n_chars)
+        found_url = _search_brand_site(marca, mpn, nombre)
+        if found_url:
+            logger.info("  BRAND_SEARCH  id=%d  scraping %s", pid, found_url)
+            product_data = scrape_from_direct_url(found_url, pid)
+            if product_data is not None:
+                n_chars = len(product_data.get("caracteristicas") or [])
+                logger.info("  BRAND_SEARCH  id=%d  succeeded (%d characteristics)", pid, n_chars)
 
     # 1. Icecat by EAN
     if not product_data and ean:
@@ -268,15 +245,43 @@ def _fetch_and_prepare(
         elif result is _NOT_FOUND:
             was_not_found = True
 
-    # ── 2. AI agent (web search + LLM, last resort before not-found) ─────
+    # ── 3. AI agent (web search + extraction, last resort before not-found) ──
     if not product_data and marca and mpn and not dry_run:
         from .ai_agent import enrich_with_ai
 
-        logger.info("  AI_AGENT  id=%d  trying web search + LLM extraction", pid)
+        logger.info("  AI_AGENT  id=%d  trying web search + extraction", pid)
         product_data = enrich_with_ai(marca, mpn, nombre)
         if product_data is not None:
             n_chars = len(product_data.get("caracteristicas") or [])
             logger.info("  AI_AGENT  id=%d  succeeded (%d characteristics)", pid, n_chars)
+
+    # ── 4. Name-only search (no brand/MPN, but has a product name) ─────────
+    if not product_data and nombre and not dry_run:
+        from .official_scraper import (
+            _infer_brand_from_name, _search_brand_site, scrape_from_direct_url,
+        )
+
+        inferred_brand = _infer_brand_from_name(nombre)
+        if inferred_brand:
+            logger.info(
+                "  NAME_SEARCH  id=%d  inferred brand=%r from name=%r",
+                pid, inferred_brand, nombre,
+            )
+            found_url = _search_brand_site(inferred_brand, mpn or "", nombre)
+            if found_url:
+                logger.info("  NAME_SEARCH  id=%d  scraping %s", pid, found_url)
+                product_data = scrape_from_direct_url(found_url, pid)
+                if product_data is not None:
+                    n_chars = len(product_data.get("caracteristicas") or [])
+                    logger.info(
+                        "  NAME_SEARCH  id=%d  succeeded (%d characteristics)",
+                        pid, n_chars,
+                    )
+        else:
+            logger.debug(
+                "  NAME_SEARCH  id=%d  no brand could be inferred from %r",
+                pid, nombre,
+            )
 
     if product_data is None:
         if not tried and not (marca and mpn):

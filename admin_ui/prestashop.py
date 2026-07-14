@@ -54,6 +54,24 @@ def _wrap_language_cdata(xml_str: str) -> str:
     )
 
 
+def _strip_prestashop_attrs(root: ET.Element) -> None:
+    """Remove attributes that PrestaShop's PUT endpoint rejects.
+
+    GET responses include ``xlink:href``, ``notFilterable``, ``nodeType``,
+    ``api``, etc.  PrestaShop 8.1 chokes on these during PUT with a 500.
+    This strips all attributes except ``id`` on ``<language>`` tags.
+    """
+    for el in root.iter():
+        if el.tag == "language":
+            # Keep only the id attribute
+            lang_id = el.get("id")
+            el.attrib.clear()
+            if lang_id:
+                el.attrib["id"] = lang_id
+        else:
+            el.attrib.clear()
+
+
 class AdminPrestashopClient(PrestashopClient):
     """Adds GET / PUT product capabilities needed for the approval flow."""
 
@@ -118,7 +136,11 @@ class AdminPrestashopClient(PrestashopClient):
             if old_pf is not None:
                 assoc_el.remove(old_pf)
             pf_el = SubElement(assoc_el, "product_features")
+            seen = set()
             for fid, fvid in feature_pairs:
+                if (fid, fvid) in seen:
+                    continue
+                seen.add((fid, fvid))
                 pf_item = SubElement(pf_el, "product_feature")
                 id_el = SubElement(pf_item, "id")
                 id_el.text = str(fid)
@@ -155,6 +177,15 @@ class AdminPrestashopClient(PrestashopClient):
         self._set_field(product_el, "indexed", "1")
         self._set_field(product_el, "state", "1")
 
+        # Strip associations down to only product_features + categories.
+        # PrestaShop 8.1 rejects PUTs that include images, combinations,
+        # stock_availables, etc. inside <associations>.
+        assoc_el = product_el.find("associations")
+        if assoc_el is not None:
+            for child in list(assoc_el):
+                if child.tag not in ("product_features", "categories"):
+                    assoc_el.remove(child)
+
         # Debug: check critical fields before PUT
         assoc_el = product_el.find("associations")
         cats_el = assoc_el.find("categories") if assoc_el is not None else None
@@ -175,6 +206,7 @@ class AdminPrestashopClient(PrestashopClient):
             product_el.findtext("indexed"),
         )
 
+        _strip_prestashop_attrs(root)
         xml_str = ET.tostring(root, encoding="unicode", xml_declaration=True)
         xml_str = _wrap_language_cdata(xml_str)
 
@@ -186,7 +218,11 @@ class AdminPrestashopClient(PrestashopClient):
             "  PUT product %d → HTTP %d  body=%.200s",
             product_id, resp.status_code, resp.text[:200],
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            raise PrestashopError(
+                f"PUT products/{product_id} failed HTTP {resp.status_code}: "
+                f"{resp.text[:500]}"
+            )
         time.sleep(API_SLEEP)
 
         # Verify: re-fetch and log critical fields

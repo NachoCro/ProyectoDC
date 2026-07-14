@@ -7,3 +7,4 @@ numpy>=1.24
 beautifulsoup4>=4.12
 lxml>=5.0
 ddgs>=9.0
+selenium>=4.25

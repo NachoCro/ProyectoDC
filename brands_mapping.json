@@ -1,35 +1,46 @@
 {
-  "asus": {
-    "direct_url": "https://www.asus.com/es/search/?SearchKey={mpn}"
-  },
   "samsung": {
-    "direct_url": "https://www.samsung.com/es/search/?search={mpn}"
+    "search_url": "https://www.samsung.com/ar/aisearch/?searchvalue={mpn}",
+    "result_selector": "a[class*='product'], div[class*='product'] a"
+  },
+  "asus": {
+    "search_url": "https://www.asus.com/es/search/?SearchKey={mpn}",
+    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
   },
   "lenovo": {
-    "direct_url": "https://www.lenovo.com/es/es/search?q={mpn}"
+    "search_url": "https://www.lenovo.com/es/es/search?q={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "hp": {
-    "direct_url": "https://www.hp.com/es-es/search.html?q={mpn}"
+    "search_url": "https://www.hp.com/es-es/search.html?q={mpn}",
+    "result_selector": "a[href*='/product/'], .product-tile a, a[class*='product']"
   },
   "dell": {
-    "direct_url": "https://www.dell.com/support/home/es-es?kwp={mpn}"
+    "search_url": "https://www.dell.com/es-es/search?st={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "lg": {
-    "direct_url": "https://www.lg.com/es/search?query={mpn}"
+    "search_url": "https://www.lg.com/es/search?query={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "logitech": {
-    "direct_url": "https://www.logitech.com/es-es/search?q={mpn}"
+    "search_url": "https://www.logitech.com/es-es/search?q={mpn}",
+    "result_selector": "a[href*='/products/'], .product-card a, a[class*='product']"
   },
   "creality": {
-    "direct_url": "https://www.creality.com/search?q={mpn}"
+    "search_url": "https://www.creality.com/search?q={mpn}",
+    "result_selector": "a[href*='/products/'], .product-card a, a[class*='product']"
   },
   "razer": {
-    "direct_url": "https://www.razer.com/es-en/search?q={mpn}"
+    "search_url": "https://www.razer.com/es-en/search?q={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "xiaomi": {
-    "direct_url": "https://www.mi.com/es/search?keyword={mpn}"
+    "search_url": "https://www.mi.com/es/search?keyword={mpn}",
+    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
   },
   "tcl": {
-    "direct_url": "https://www.tcl.com/es/es/search?q={mpn}"
+    "search_url": "https://www.tcl.com/es/es/search?q={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   }
 }

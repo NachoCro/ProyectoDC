@@ -39,10 +39,11 @@ middleware/              ← extraction + enrichment engine
   icecat.py             — IcecatClient (Live JSON API, api-token header, normalizer)
   embedding.py          — sentence-transformers (all-MiniLM-L6-v2, 384-dim, LRU cached)
   translate.py          — GoogleTranslator with protected glossary (~60 tech terms)
-  enrich.py             — pipeline: DB cache → URL template → Icecat → translate → embed → score → store → push
+  enrich.py             — pipeline: DB cache → brand site search → Icecat → AI agent → translate → embed → score → store → push
+  ai_agent.py           — DuckDuckGo web search + HTML scraping (JSON-LD/OG/tables), last resort before not-found
   characteristics.py    — merge_characteristics(): template + Icecat merge logic
   descriptions.py       — load product descriptions from 003 DESCRIPCIONES.xlsx
-  official_scraper.py   — manual URL scraping (scrape_from_direct_url)
+  official_scraper.py   — manual URL scraping (scrape_from_direct_url) + brand site search (_search_brand_site)
 admin_ui/               ← Flask approval UI
   app.py                — routes: dashboard, diff, approve/reject/re-sync, scrape-url, audit
   prestashop.py         — AdminPrestashopClient (adds GET/PUT as JSON/XML, CDATA wrapping)
@@ -54,7 +55,7 @@ migrations/             — SQL migration files (001_admin_ui.sql, 002_imagen_ur
 default_characteristics.json   — 79 templates with default values per subcategory
 subcategory_mapping.json       — maps DB subcategoria name → template key (19 entries)
 descripcion_mapping.json       — maps DB subcategoria name → Excel description key
-brands_mapping.json            — maps brand name → direct URL template ({mpn} placeholder)
+brands_mapping.json            — maps brand name → search_url + result_selector ({mpn} placeholder)
 ```
 
 ## Ingestion rules
@@ -67,7 +68,7 @@ brands_mapping.json            — maps brand name → direct URL template ({mpn
 ## Key flows
 
 - **Extraction** (`middleware/extract.py`): walks inactive products page-by-page, fetches stock map for each page, keeps only qty>1, short-circuits if EAN/id already in DB or marked `product_not_found`, syncs local fields with PrestaShop data (PrestaShop is source of truth), resolves subcategory from product's `id_category_default` (matching `subcategorias.id_prestashop_categoria`), falls back to `SIN CLASIFICAR` if no match, inserts with `estado_actualizacion='desactualizado'`.
-- **Enrichment** (`middleware/enrich.py`): selects `icecat_json IS NULL AND product_not_found = 0 AND icecat_not_found = 0`. For each product: (1) if brand has a URL template in `brands_mapping.json` and product has MPN, builds the URL and calls `scrape_from_direct_url` — if that succeeds, uses the scraped data directly; (2) otherwise falls back to Icecat (by EAN → Brand+MPN). Translates (glossary-protected), generates embedding + cosine score, stores `icecat_json` + `vector_descriptivo`. If all sources return 404, flags `icecat_not_found = 1` for manual URL enrichment via Admin UI. Merges characteristics with default template, builds description, pushes to PrestaShop.
+- **Enrichment** (`middleware/enrich.py`): selects `icecat_json IS NULL AND product_not_found = 0 AND icecat_not_found = 0`. For each product: (1) if brand has a mapping in `brands_mapping.json` and product has MPN, uses `_search_brand_site` to navigate to the brand's search page via Selenium, waits for product cards, extracts the first result URL, then scrapes it; (2) if brand search fails or brand has no mapping, falls back to Icecat (by EAN → Brand+MPN); (3) if Icecat fails and product has brand+MPN, tries `ai_agent.enrich_with_ai()` — DuckDuckGo web search → fetch pages → extract JSON-LD/OG/HTML tables. Translates (glossary-protected), generates embedding + cosine score, stores `icecat_json` + `vector_descriptivo`. If all sources return 404, flags `icecat_not_found = 1` for manual URL enrichment via Admin UI. Merges characteristics with default template, builds description, pushes to PrestaShop.
 - **Approval:** two approve modes — "Aprobar y activar" (PUTs descriptions + `active=1`) and "Aprobar (sin activar)" (only descriptions). Both merge Icecat characteristics with default template, build description as `*nombre*: valor` lines from merged characteristics, push to PrestaShop (descriptions + features). EAV written locally, marked `actualizado`. Audit distinguishes `aprobado` vs `aprobado_y_activado`. Reject clears `icecat_json`. Re-sync resets flags for retry.
 - **Translation** (`middleware/translate.py`): glossary protects ~60 technical terms (OLED, USB-C, DDR5, RTX, etc.) via `\x00G{i}\x00` placeholder substitution. Does **not** translate `descripcion_corta`.
 - **Embedding** (`middleware/embedding.py`): `all-MiniLM-L6-v2`, 384-dim float32, normalized. LRU cache (512 entries). Stored as raw bytes in `productos.vector_descriptivo`.
@@ -91,7 +92,7 @@ brands_mapping.json            — maps brand name → direct URL template ({mpn
 - **Product category assignment:** `put_product` accepts `category_ids` to assign the product to corresponding PrestaShop categories. The pipeline passes the subcategory's PS category (from `subcategorias.id_prestashop_categoria`).
 - **Default characteristics** (`middleware/characteristics.py`): `merge_characteristics()` merges Icecat characteristics with a default template per subcategory. Rules: (1) every template entry is included, (2) if Icecat has a characteristic with the same name (case-insensitive), its value overwrites the default, (3) extra Icecat characteristics are appended at the end.
 - **Descriptions from Excel** (`middleware/descriptions.py`): reads `003 DESCRIPCIONES.xlsx` (DESCRIPCIONES sheet) and maps DB subcategory names to Excel entries via `descripcion_mapping.json`. **Not wired into the pipeline/approval yet** — currently the description is built entirely from merged characteristics as `*nombre*: valor` lines.
-- **Official scraper** (`middleware/official_scraper.py`): `scrape_from_direct_url(url, product_id)` accepts a human-verified official URL, fetches the page, extracts JSON-LD/OG meta/HTML tables, and persists to EAV tables. Used by the Admin UI for manual URL enrichment.
+- **Official scraper** (`middleware/official_scraper.py`): `scrape_from_direct_url(url, product_id)` accepts a human-verified official URL, uses headless Selenium (Chrome) to render JS-heavy pages, then parses with BeautifulSoup (JSON-LD/OG meta/HTML tables), and persists to EAV tables. Used by the Admin UI for manual URL enrichment.
 - **icecat_not_found vs product_not_found:** `icecat_not_found` flags products where Icecat specifically returned 404 (eligible for manual URL enrichment). `product_not_found` flags products with no EAN/MPN or completely missing from all sources (excluded from all processing).
 - **Manual URL enrichment:** `POST /products/<pid>/scrape-url` accepts a URL, calls `scrape_from_direct_url()`, which fetches the page, extracts JSON-LD/OG/HTML tables, writes to EAV, updates `icecat_json`, and clears `icecat_not_found`.
 - **Product state field:** PrestaShop 8.1 requires `ps_product.state = 1` for products to appear in Catálogo > Productos. Products created via the webservice default to `state=0` (draft). `put_product` forces `state=1` alongside `visibility` and `indexed` to prevent invisible products.
@@ -103,12 +104,13 @@ brands_mapping.json            — maps brand name → direct URL template ({mpn
 - **Short-circuit:** local DB checks run before any Icecat call
 - **Immutable audit:** `audit_log` table append-only
 
-## Enrichment cascade (DB → URL template → Icecat → not-found → manual URL)
+## Enrichment cascade (DB → brand site search → Icecat → AI agent → not-found → manual URL)
 
 The enrichment pipeline (`middleware/enrich.py`) tries sources in order:
 
 1. **Local DB** (existing `icecat_json`): if a previous run stored data but push failed, re-push without re-fetching.
-2. **URL template** (`middleware/enrich.py:_build_url_template`): if the brand has a template in `brands_mapping.json` and the product has an MPN, builds the direct URL and calls `scrape_from_direct_url`. Deterministic, no search engines, no API credits.
+2. **Brand site search** (`middleware/official_scraper.py:_search_brand_site`): if the brand has a `search_url` + `result_selector` in `brands_mapping.json`, uses Selenium to navigate to the brand's internal search page, waits for product card elements, extracts the first result URL, and passes it to `scrape_from_direct_url`. No Icecat credits consumed. Brands without a mapping skip straight to Icecat.
 3. **Icecat** (by EAN → Brand+MPN fallback): broader coverage, uses API credits.
-4. **Not found**: if all automated sources fail, sets `icecat_not_found = 1` — product stays in queue for manual URL enrichment via the Admin UI.
-5. **Manual URL enrichment** (`middleware/official_scraper.py:scrape_from_direct_url`): human pastes a verified official manufacturer URL in the Admin UI, the scraper fetches/parses the page (JSON-LD → OG meta → HTML tables), persists characteristics to EAV tables, and clears `icecat_not_found`.
+4. **AI agent** (`middleware/ai_agent.py:enrich_with_ai`): DuckDuckGo web search → fetch pages → extract JSON-LD/OG meta/HTML tables. Requires brand+MPN. Uses `ddgs` package. No API credits. Skipped in dry-run mode.
+5. **Not found**: if all automated sources fail, sets `icecat_not_found = 1` — product stays in queue for manual URL enrichment via the Admin UI.
+6. **Manual URL enrichment** (`middleware/official_scraper.py:scrape_from_direct_url`): human pastes a verified official manufacturer URL in the Admin UI, the scraper fetches/parses the page (JSON-LD → OG meta → HTML tables), persists characteristics to EAV tables, and clears `icecat_not_found`.

@@ -104,6 +104,12 @@
   <div class="dash-actions">
     <h2>Acciones rápidas</h2>
     <div class="dash-actions__grid">
+      <form method="post" action="{{ url_for('run_pipeline') }}" class="dash-action dash-action--btn" id="pipelineForm">
+        <button type="submit" class="dash-action__btn">
+          <span class="dash-action__icon">🚀</span>
+          <span class="dash-action__text">Ejecutar pipeline completo</span>
+        </button>
+      </form>
       <form method="post" action="{{ url_for('extract') }}" class="dash-action dash-action--btn" id="extractForm">
         <button type="submit" class="dash-action__btn">
           <span class="dash-action__icon">📥</span>
@@ -162,7 +168,7 @@
 </div>
 
 <script>
-function setupPipelineForm(formId, btnLabel) {
+function setupPipelineForm(formId, btnLabel, icon) {
   var form = document.getElementById(formId);
   if (!form) return;
   form.addEventListener('submit', function(e) {
@@ -181,7 +187,7 @@ function setupPipelineForm(formId, btnLabel) {
           alert('Error: ' + (data.error || 'Error desconocido'));
           btn.disabled = false;
           btn.querySelector('.dash-action__text').textContent = btnLabel;
-          btn.querySelector('.dash-action__icon').textContent = formId === 'extractForm' ? '📥' : '🔄';
+          btn.querySelector('.dash-action__icon').textContent = icon;
           form.classList.remove('dash-action--loading');
         }
       })
@@ -189,12 +195,13 @@ function setupPipelineForm(formId, btnLabel) {
         alert('Error de red: ' + err);
         btn.disabled = false;
         btn.querySelector('.dash-action__text').textContent = btnLabel;
-        btn.querySelector('.dash-action__icon').textContent = formId === 'extractForm' ? '📥' : '🔄';
+        btn.querySelector('.dash-action__icon').textContent = icon;
         form.classList.remove('dash-action--loading');
       });
   });
 }
-setupPipelineForm('extractForm', 'Extraer productos');
-setupPipelineForm('enrichForm', 'Enriquecer con Icecat');
+setupPipelineForm('pipelineForm', 'Ejecutar pipeline completo', '🚀');
+setupPipelineForm('extractForm', 'Extraer productos', '📥');
+setupPipelineForm('enrichForm', 'Enriquecer con Icecat', '🔄');
 </script>
 {% endblock %}
