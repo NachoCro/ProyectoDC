@@ -22,6 +22,7 @@ from .embedding import embedding_to_bytes, generate_embedding, score_match
 from .icecat import IcecatClient, IcecatError
 from .translate import translate_product
 from .characteristics import merge_characteristics
+from .descriptions import get_description
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,11 @@ def _push_to_prestashop(
         icecat_data.get("caracteristicas") or [], subcat_name,
     )
     desc = _build_description(icecat_data, merged_caracteristicas)
+
+    excel_desc = get_description(subcat_name)
     updates = {
         "description": desc,
-        "description_short": "",
+        "description_short": excel_desc["descripcion_corta"],
     }
 
     # Look up PrestaShop category for this subcategory
@@ -208,10 +211,10 @@ def _fetch_and_prepare(
     was_not_found = False
 
     # ── 0. Brand site search (official site → product page → scrape) ──────
-    if marca and mpn and not dry_run:
+    if marca and nombre and not dry_run:
         from .official_scraper import _search_brand_site, scrape_from_direct_url
 
-        found_url = _search_brand_site(marca, mpn, nombre)
+        found_url = _search_brand_site(marca, mpn or "", nombre, pid)
         if found_url:
             logger.info("  BRAND_SEARCH  id=%d  scraping %s", pid, found_url)
             product_data = scrape_from_direct_url(found_url, pid)
@@ -267,7 +270,7 @@ def _fetch_and_prepare(
                 "  NAME_SEARCH  id=%d  inferred brand=%r from name=%r",
                 pid, inferred_brand, nombre,
             )
-            found_url = _search_brand_site(inferred_brand, mpn or "", nombre)
+            found_url = _search_brand_site(inferred_brand, mpn or "", nombre, pid)
             if found_url:
                 logger.info("  NAME_SEARCH  id=%d  scraping %s", pid, found_url)
                 product_data = scrape_from_direct_url(found_url, pid)

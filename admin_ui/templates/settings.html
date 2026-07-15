@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Configuración — Admin{% endblock %}
+{% block content %}
+
+<h1>Configuración</h1>
+
+{% if saved %}
+<div class="settings-saved">Configuración guardada correctamente.</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('settings_save') }}" class="settings-form">
+  {% for key, f in fields.items() %}
+  <div class="settings-field">
+    <label for="{{ key }}">{{ f.label }}</label>
+    <input type="text" id="{{ key }}" name="{{ key }}" value="{{ f.value }}" placeholder="{{ f.default }}">
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn btn--lg btn--approve">Guardar</button>
+</form>
+
+{% endblock %}

@@ -22,7 +22,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import API_SLEEP
-from .db import get_connection
+from .db import get_connection, mark_icecat_not_found
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +79,16 @@ def _create_driver() -> webdriver.Chrome:
 # ── Brand site search ────────────────────────────────────────────────────────
 
 
-def _search_brand_site(marca: str, mpn: str, product_name: str) -> str | None:
+def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) -> str | None:
     """Search the brand's official site for a product and return the first result URL.
 
-    Uses the full *product_name* as the search query (more reliable than bare MPN)
-    by substituting the ``{mpn}`` placeholder in ``brands_mapping.json`` with the
-    full product name.
-
-    After navigating to the first result's page, validates that the MPN substring
-    appears somewhere in the rendered HTML text.  If it does not, the page is
-    likely a wrong match and ``None`` is returned so the next enrichment source
-    (Icecat) can be tried.
+    Uses the full *product_name* as the search query by substituting the
+    ``{mpn}`` placeholder in ``brands_mapping.json`` with the product name.
+    No MPN validation is performed — the search is purely name-based.
 
     Returns the absolute URL of the first matching product card, or ``None``
     if the brand has no search config, the search yields no results,
-    validation fails, or Selenium fails.
+    or Selenium fails.
     """
     key = marca.strip().lower()
     entry = _BRANDS_MAP.get(key)
@@ -126,28 +121,7 @@ def _search_brand_site(marca: str, mpn: str, product_name: str) -> str | None:
             logger.debug("  BRAND_SEARCH  first result has no href for %s %s", key, mpn)
             return None
 
-        # ── MPN validation guardrail ──────────────────────────────────────
-        # Navigate to the result page and confirm the MPN actually appears
-        # in the rendered text — avoids scraping a completely wrong product.
-        # Skip validation when MPN is empty (name-only products).
-        if not mpn.strip():
-            logger.info("  BRAND_SEARCH  no MPN to validate — accepting %s", href)
-            return href
-
-        logger.info("  BRAND_SEARCH  navigated to %s — validating MPN", href)
-        driver.get(href)
-        time.sleep(API_SLEEP)
-        page_text = driver.page_source.lower()
-        mpn_lower = mpn.strip().lower()
-        if mpn_lower not in page_text:
-            logger.warning(
-                "  BRAND_SEARCH  MPN validation FAILED for %s — "
-                "MPN %r not found on page %s, skipping",
-                key, mpn, href,
-            )
-            return None
-
-        logger.info("  BRAND_SEARCH  MPN validated on page — returning %s", href)
+        logger.info("  BRAND_SEARCH  found result — returning %s", href)
         return href
     except Exception as exc:
         logger.debug("  BRAND_SEARCH  %s %s failed: %s", key, mpn, exc)

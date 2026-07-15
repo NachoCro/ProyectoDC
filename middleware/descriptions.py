@@ -15,6 +15,10 @@ _EXCEL_PATH = _BASE / "003 DESCRIPCIONES.xlsx"
 
 _LOADED: dict[str, dict[str, str]] | None = None
 
+_PLACEHOLDER_RE = __import__("re").compile(
+    r"(?i)^ver\s+descripci[oó]n\s+de\s+",
+)
+
 
 def _load_mapping() -> dict:
     path = _BASE / "descripcion_mapping.json"
@@ -68,9 +72,16 @@ def _get_all() -> dict[str, dict[str, str]]:
     return _LOADED
 
 
+def _is_placeholder(text: str) -> bool:
+    """Return True if *text* is a placeholder like 'Ver descripción de X'."""
+    return bool(text and _PLACEHOLDER_RE.match(text.strip()))
+
+
 def get_description(subcat_name: str) -> dict[str, str]:
     """Return ``{"descripcion": …, "descripcion_corta": …}`` for a DB subcategory.
 
+    Placeholder values (``"Ver descripción de …"``) are replaced with empty
+    strings so callers never push meaningless text to PrestaShop.
     Falls back to empty strings if no mapping or Excel entry exists.
     """
     mapping = _load_mapping()
@@ -83,4 +94,9 @@ def get_description(subcat_name: str) -> dict[str, str]:
     if not entry:
         return {"descripcion": "", "descripcion_corta": ""}
 
-    return dict(entry)
+    desc = entry["descripcion"]
+    short = entry["descripcion_corta"]
+    return {
+        "descripcion": "" if _is_placeholder(desc) else desc,
+        "descripcion_corta": "" if _is_placeholder(short) else short,
+    }

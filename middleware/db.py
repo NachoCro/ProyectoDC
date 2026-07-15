@@ -126,6 +126,14 @@ def _ensure_schema() -> None:
             except sqlite3.OperationalError:
                 pass
 
+            # ── Config table (app settings) ─────────────────────────────
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS config (
+                    clave  TEXT PRIMARY KEY,
+                    valor  TEXT NOT NULL
+                )"""
+            )
+
             # ── Seed data if empty ──────────────────────────────────────
             cat_count = conn.execute("SELECT COUNT(*) FROM categorias").fetchone()[0]
             if cat_count == 0:

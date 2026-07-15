@@ -1,46 +1,510 @@
 {
+  "hp": {
+    "search_url": "https://www.hp.com/us-en/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-tile a, a[class*='product']"
+  },
+  "nisuta": {
+    "search_url": "https://nisuta.com/productos.asp?search={mpn}",
+    "result_selector": "a[href*='producto'], .product-card a, a[class*='product']"
+  },
+  "netmak": {
+    "search_url": "https://netmak.ar/?s={mpn}&post_type=product",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "noganet": {
+    "search_url": "https://noganet.ar/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "genius": {
+    "search_url": "https://www.geniusnet.com/es/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "epson": {
+    "search_url": "https://epson.com/search/?text={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
   "samsung": {
     "search_url": "https://www.samsung.com/ar/aisearch/?searchvalue={mpn}",
-    "result_selector": "a[class*='product'], div[class*='product'] a"
+    "result_selector": "a[class*='product'], div[class*='product'] a, [data-testid*='product'] a"
   },
-  "asus": {
-    "search_url": "https://www.asus.com/es/search/?SearchKey={mpn}",
-    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
-  },
-  "lenovo": {
-    "search_url": "https://www.lenovo.com/es/es/search?q={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
-  },
-  "hp": {
-    "search_url": "https://www.hp.com/es-es/search.html?q={mpn}",
-    "result_selector": "a[href*='/product/'], .product-tile a, a[class*='product']"
-  },
-  "dell": {
-    "search_url": "https://www.dell.com/es-es/search?st={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
-  },
-  "lg": {
-    "search_url": "https://www.lg.com/es/search?query={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+  "tp-link": {
+    "search_url": "https://www.tp-link.com/en/search/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "logitech": {
-    "search_url": "https://www.logitech.com/es-es/search?q={mpn}",
+    "search_url": "https://www.logitech.com/es-ar/search?q={mpn}",
     "result_selector": "a[href*='/products/'], .product-card a, a[class*='product']"
+  },
+  "lenovo": {
+    "search_url": "https://www.lenovo.com/ar/es/search?fq=&text={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+  },
+  "hikvision": {
+    "search_url": "https://www.hikvision.com/en/search/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "redragon": {
+    "search_url": "https://redragon.es/?s={mpn}&post_type=product",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "kingston": {
+    "search_url": "https://www.kingston.com/en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "brother": {
+    "search_url": "https://support.brother.com/g/b/branch.aspx?c=us&lang=en&brbrand=default&q={mpn}",
+    "result_selector": "a[href*='product'], a[href*='model'], .result-card a, a[class*='product']"
+  },
+  "adata": {
+    "search_url": "https://www.adata.com/es/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "jbl": {
+    "search_url": "https://www.jbl.com.ar/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "trust": {
+    "search_url": "https://www.trust.com/es/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "asus": {
+    "search_url": "https://www.asus.com/us/searchResult/?searchType=products&searchKey={mpn}",
+    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
+  },
+  "sentey": {
+    "search_url": "https://www.sentey.com/es/buscar.php?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "casio": {
+    "search_url": "https://www.casio.com/es/search/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "motorola": {
+    "search_url": "https://www.motorola.com.ar/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "msi": {
+    "search_url": "https://www.msi.com/search/{mpn}",
+    "result_selector": "a[href*='product'], a[href*='/p/'], .product-card a, a[class*='product']"
+  },
+  "lexar": {
+    "search_url": "https://www.lexar.com/search-result/?search={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "philips": {
+    "search_url": "https://www.philips.com.ar/c-w/search.html#q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "corsair": {
+    "search_url": "https://www.corsair.com/us/en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "tcl": {
+    "search_url": "https://www.tcl.com/global/en/search-result?q={mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+  },
+  "amazon": {
+    "search_url": "https://www.amazon.com/s?k={mpn}",
+    "result_selector": "a[href*='/dp/'], .s-result-item h2 a, a[class*='product']"
+  },
+  "dell": {
+    "search_url": "https://www.dell.com/en-us/search/{mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+  },
+  "canon": {
+    "search_url": "https://www.usa.canon.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "gigabyte": {
+    "search_url": "https://www.gigabyte.com/Search?SearchWord={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "amd": {
+    "search_url": "https://www.amd.com/en/search.html#q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "pantum": {
+    "search_url": "https://www.pantum.com/es/search-result/?keyword={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "gtc": {
+    "search_url": "https://listado.mercadolibre.com.ar/gtc-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "panacom": {
+    "search_url": "https://listado.mercadolibre.com.ar/panacom-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "xiaomi": {
+    "search_url": "https://www.mi.com/global/search/{mpn}",
+    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
+  },
+  "aiwa": {
+    "search_url": "https://aiwa.co/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "global electronics": {
+    "search_url": "https://listado.mercadolibre.com.ar/global-electronics-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "intel": {
+    "search_url": "https://www.intel.com/content/www/us/en/search.html?ws=us-en#q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "ezviz": {
+    "search_url": "https://www.ezviz.com/es/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "gfast": {
+    "search_url": "https://gfast.com.ar/?s={mpn}&post_type=product",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "marvo": {
+    "search_url": "https://www.marvopro.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "thermaltake": {
+    "search_url": "https://www.thermaltake.com/search/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "kassel": {
+    "search_url": "https://listado.mercadolibre.com.ar/kassel-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "shenlong": {
+    "search_url": "https://shenlong.com.ar/?s={mpn}&post_type=product",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "razer": {
+    "search_url": "https://www.razer.com/search/{mpn}",
+    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+  },
+  "verbatim": {
+    "search_url": "https://www.verbatim.com/index/search.php?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "caselogic": {
+    "search_url": "https://www.caselogic.com/es-es/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "pny": {
+    "search_url": "https://www.pny.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "sandisk": {
+    "search_url": "https://www.westerndigital.com/es-es/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "sony": {
+    "search_url": "https://www.sony.com/en/search?query={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "instto": {
+    "search_url": "https://listado.mercadolibre.com.ar/instto-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "wd": {
+    "search_url": "https://www.westerndigital.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "kolke": {
+    "search_url": "https://listado.mercadolibre.com.ar/kolke-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "asrock": {
+    "search_url": "https://www.asrock.com/general/search.asp?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "hyperx": {
+    "search_url": "https://row.hyperx.com/pages/search-results-page?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "lyonn": {
+    "search_url": "https://lyonn.com.ar/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "hasar": {
+    "search_url": "https://grupohasar.com/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "wacom": {
+    "search_url": "https://www.wacom.com/es-es/search-results?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "panasonic": {
+    "search_url": "https://www.panasonic.com/es/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "euro": {
+    "search_url": "https://listado.mercadolibre.com.ar/euro-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "moonki sound": {
+    "search_url": "https://www.moonki.com/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "cifra": {
+    "search_url": "https://cifrars.com.ar/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "xerox": {
+    "search_url": "https://www.xerox.com/en-us/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "overtech": {
+    "search_url": "https://listado.mercadolibre.com.ar/overtech-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "acer": {
+    "search_url": "https://www.acer.com/us-en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "lexmark": {
+    "search_url": "https://www.lexmark.com/en_us/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "fullmark": {
+    "search_url": "https://listado.mercadolibre.com.ar/fullmark-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "viewsonic": {
+    "search_url": "https://www.viewsonic.com/us/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "noblex": {
+    "search_url": "https://noblex.com.ar/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "xtrike me": {
+    "search_url": "https://xtrike-me.com/index.php?c=search&word={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "moretti": {
+    "search_url": "https://moretti.com.ar/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "toshiba": {
+    "search_url": "https://www.toshiba.com/tai/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "pcbox": {
+    "search_url": "https://listado.mercadolibre.com.ar/pcbox-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "travel tech": {
+    "search_url": "https://listado.mercadolibre.com.ar/travel-tech-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "exo": {
+    "search_url": "https://tienda.exo.com.ar/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "everlast": {
+    "search_url": "https://listado.mercadolibre.com.ar/everlast-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "atma": {
+    "search_url": "https://www.atma.com.ar/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "cx": {
+    "search_url": "https://listado.mercadolibre.com.ar/cx-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "kodak": {
+    "search_url": "https://www.kodak.com/en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "alcatel": {
+    "search_url": "https://www.alcatelmobile.com/es/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "blu": {
+    "search_url": "https://bluproducts.com/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "maxyou": {
+    "search_url": "https://maxyou.com.ar/?s={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "apple": {
+    "search_url": "https://support.apple.com/kb/index?page=search&q={mpn}",
+    "result_selector": "a[href*='product'], a[href*='article'], .result-card a, a[class*='product']"
+  },
+  "western digital": {
+    "search_url": "https://www.westerndigital.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "gadnic": {
+    "search_url": "https://www.gadnic.com.ar/buscar?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "datalogic": {
+    "search_url": "https://www.datalogic.com/es/search-results-page.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "baseus": {
+    "search_url": "https://www.baseus.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "apc": {
+    "search_url": "https://www.apc.com/es/es/search/{mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "foxbox": {
+    "search_url": "https://foxboxgroup.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "head": {
+    "search_url": "https://listado.mercadolibre.com.ar/head-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "garmin": {
+    "search_url": "https://www.garmin.com/es-AR/search/?query={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "vaio": {
+    "search_url": "https://us.vaio.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "royal": {
+    "search_url": "https://www.royal.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "lg": {
+    "search_url": "https://www.lg.com/es/search?q={mpn}",
+    "result_selector": "a[href*='/p/'], .result-info__spec-list, a[class*='product']"
+  },
+  "evga": {
+    "search_url": "https://www.evga.com/support/search.asp?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "moulinex": {
+    "search_url": "https://www.moulinex.com.ar/search?text={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "d-link": {
+    "search_url": "https://www.dlink.com/en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "kretz": {
+    "search_url": "https://www.kretz.com.ar/buscar?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "coolermaster": {
+    "search_url": "https://www.coolermaster.com/en-global/search/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "kozumi": {
+    "search_url": "https://listado.mercadolibre.com.ar/kozumi-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "targus": {
+    "search_url": "https://es.targus.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "intellinet": {
+    "search_url": "https://www.intellinetnetwork.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "rca": {
+    "search_url": "https://listado.mercadolibre.com.ar/rca-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "bgh": {
+    "search_url": "https://store.bgh.com.ar/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "powertec": {
+    "search_url": "https://listado.mercadolibre.com.ar/powertec-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "metrologic": {
+    "search_url": "https://listado.mercadolibre.com.ar/metrologic-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "compaq": {
+    "search_url": "https://www.google.com/search?q=compaq+{mpn}",
+    "result_selector": "a[href*='product'], .g a, a[class*='product']"
+  },
+  "microsoft": {
+    "search_url": "https://www.microsoft.com/es-es/search/explore?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "netsys": {
+    "search_url": "https://listado.mercadolibre.com.ar/netsys-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "vivotek": {
+    "search_url": "https://www.vivotek.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "manhattan": {
+    "search_url": "https://manhattanproducts.us/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "jvc": {
+    "search_url": "https://www.jvc.com/es/search/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "shure": {
+    "search_url": "https://www.shure.com/es-ES/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "edifier": {
+    "search_url": "https://www.edifier.com/global/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "mobox": {
+    "search_url": "https://listado.mercadolibre.com.ar/mobox-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "oki": {
+    "search_url": "https://www.oki.com/es/printing/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "tenda": {
+    "search_url": "https://www.tendacn.com/es/search/{mpn}.html",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "linksys": {
+    "search_url": "https://www.linksys.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "bangho": {
+    "search_url": "https://www.bangho.com.ar/catalogsearch/result/?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "zebra": {
+    "search_url": "https://www.zebra.com/us/en/search.html?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "ricoh": {
+    "search_url": "https://www.ricoh-usa.com/en/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "steelseries": {
+    "search_url": "https://steelseries.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "husares": {
+    "search_url": "https://listado.mercadolibre.com.ar/husares-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "encore": {
+    "search_url": "https://listado.mercadolibre.com.ar/encore-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+  },
+  "sega": {
+    "search_url": "https://www.sega.com/search?q={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+  },
+  "biostar": {
+    "search_url": "https://www.biostar.com.tw/app/en/search/search.php?search={mpn}",
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "creality": {
     "search_url": "https://www.creality.com/search?q={mpn}",
     "result_selector": "a[href*='/products/'], .product-card a, a[class*='product']"
-  },
-  "razer": {
-    "search_url": "https://www.razer.com/es-en/search?q={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
-  },
-  "xiaomi": {
-    "search_url": "https://www.mi.com/es/search?keyword={mpn}",
-    "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
-  },
-  "tcl": {
-    "search_url": "https://www.tcl.com/es/es/search?q={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   }
 }

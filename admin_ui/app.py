@@ -8,6 +8,7 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from middleware.db import get_connection, get_subcategoria_id, insert_product
 from middleware.characteristics import merge_characteristics
+from middleware.descriptions import get_description
 from middleware.official_scraper import scrape_from_direct_url
 
 from .prestashop import AdminPrestashopClient, PrestashopError
@@ -44,6 +45,49 @@ def _parse_icecat(product: dict) -> dict | None:
         return None
 
 
+# ── pipeline lock ──────────────────────────────────────────────────────
+
+_LOCK_KEY = "pipeline_lock"
+
+
+def _is_pipeline_running() -> bool:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT valor FROM config WHERE clave = ?", (_LOCK_KEY,)
+        ).fetchone()
+        return row is not None and row["valor"] == "1"
+    finally:
+        conn.close()
+
+
+def _acquire_pipeline_lock() -> bool:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT valor FROM config WHERE clave = ?", (_LOCK_KEY,)
+        ).fetchone()
+        if row and row["valor"] == "1":
+            return False
+        conn.execute(
+            "INSERT OR REPLACE INTO config (clave, valor) VALUES (?, '1')",
+            (_LOCK_KEY,),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def _release_pipeline_lock() -> None:
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM config WHERE clave = ?", (_LOCK_KEY,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ======================================================================
 # Dashboard  (RF-11)
 # ======================================================================
@@ -52,49 +96,14 @@ def _parse_icecat(product: dict) -> dict | None:
 def dashboard():
     conn = get_connection()
     try:
-        queue = conn.execute(
-            "SELECT COUNT(*) FROM productos WHERE icecat_json IS NOT NULL"
-        ).fetchone()[0]
-
-        pending_enrichment = conn.execute(
+        pending = conn.execute(
             """SELECT COUNT(*) FROM productos
-               WHERE icecat_json IS NULL AND product_not_found = 0
-                 AND icecat_not_found = 0
-                 AND estado_actualizacion = 'desactualizado'"""
+               WHERE estado_actualizacion = 'desactualizado'
+                 AND product_not_found = 0"""
         ).fetchone()[0]
 
-        icecat_not_found = conn.execute(
-            "SELECT COUNT(*) FROM productos WHERE icecat_not_found = 1"
-        ).fetchone()[0]
-
-        pending_24h = conn.execute(
-            """SELECT COUNT(*) FROM audit_log
-               WHERE accion = 'aprobado' AND timestamp >= datetime('now', '-1 day')""",
-        ).fetchone()[0]
-
-        errors_24h = conn.execute(
-            """SELECT COUNT(*) FROM audit_log
-               WHERE accion = 'error' AND timestamp >= datetime('now', '-1 day')""",
-        ).fetchone()[0]
-
-        total_aprobados = conn.execute(
+        listos = conn.execute(
             "SELECT COUNT(*) FROM productos WHERE estado_actualizacion = 'actualizado'"
-        ).fetchone()[0]
-
-        total_products = conn.execute(
-            "SELECT COUNT(*) FROM productos"
-        ).fetchone()[0]
-
-        alerts = conn.execute(
-            """SELECT id_producto, timestamp, detalle
-               FROM audit_log WHERE accion = 'error'
-               ORDER BY timestamp DESC LIMIT 10"""
-        ).fetchall()
-
-        completados_hoy = conn.execute(
-            """SELECT COUNT(*) FROM audit_log
-               WHERE accion = 'aprobado' AND timestamp >= ?""",
-            (_today(),),
         ).fetchone()[0]
 
     finally:
@@ -102,15 +111,9 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
-        queue=queue,
-        pending_enrichment=pending_enrichment,
-        icecat_not_found=icecat_not_found,
-        pending_24h=pending_24h,
-        errors_24h=errors_24h,
-        total_aprobados=total_aprobados,
-        total_products=total_products,
-        alerts=alerts,
-        completados_hoy=completados_hoy,
+        pending=pending,
+        listos=listos,
+        pipeline_running=_is_pipeline_running(),
     )
 
 
@@ -231,7 +234,7 @@ def approve(pid: int):
 
         updates = {
             "description": desc,
-            "description_short": "",
+            "description_short": get_description(subcat_name)["descripcion_corta"],
         }
         if activate:
             updates["active"] = "1"
@@ -429,15 +432,18 @@ def enrich():
 @app.route("/extract", methods=["POST"])
 def extract():
     """Extract inactive products from PrestaShop into local DB."""
+    if not _acquire_pipeline_lock():
+        return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
     from middleware.extract import run as extract_run
-
     try:
-        inserted = extract_run(dry_run=False)
-    except Exception as exc:
-        logger.error("Extraction error: %s", exc)
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-    return jsonify({"ok": True, "inserted": inserted, "redirect": url_for("dashboard")})
+        try:
+            inserted = extract_run(dry_run=False)
+        except Exception as exc:
+            logger.error("Extraction error: %s", exc)
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return jsonify({"ok": True, "inserted": inserted, "redirect": url_for("dashboard")})
+    finally:
+        _release_pipeline_lock()
 
 
 # ======================================================================
@@ -447,22 +453,25 @@ def extract():
 @app.route("/run-pipeline", methods=["POST"])
 def run_pipeline():
     """Extract inactive products then enrich them — mirrors ``python main.py``."""
+    if not _acquire_pipeline_lock():
+        return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
     from middleware.extract import run as extract_run
     from middleware.enrich import run as enrich_run
-
     try:
-        pending = extract_run(dry_run=False)
-        enriched = enrich_run(dry_run=False)
-    except Exception as exc:
-        logger.error("Pipeline error: %s", exc)
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-    return jsonify({
-        "ok": True,
-        "inserted": len(pending),
-        "enriched": enriched,
-        "redirect": url_for("dashboard"),
-    })
+        try:
+            pending = extract_run(dry_run=False)
+            enriched = enrich_run(dry_run=False)
+        except Exception as exc:
+            logger.error("Pipeline error: %s", exc)
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return jsonify({
+            "ok": True,
+            "inserted": len(pending),
+            "enriched": enriched,
+            "redirect": url_for("dashboard"),
+        })
+    finally:
+        _release_pipeline_lock()
 
 
 # ======================================================================
@@ -497,3 +506,100 @@ def audit():
         pages=pages,
         total=total,
     )
+
+
+# ======================================================================
+# Settings / Configuración
+# ======================================================================
+
+_SETTINGS_KEYS = [
+    ("PRESTASHOP_API_URL", "PrestaShop API URL"),
+    ("PRESTASHOP_API_KEY", "PrestaShop API Key"),
+    ("ICECAT_USERNAME", "Icecat Username"),
+    ("ICECAT_API_TOKEN", "Icecat API Token"),
+    ("BATCH_SIZE", "Batch Size"),
+    ("API_SLEEP", "API Sleep (segundos)"),
+]
+
+
+@app.route("/settings", methods=["GET"])
+def settings():
+    from middleware.config import _get, DEFAULTS
+    values = {}
+    for key, label in _SETTINGS_KEYS:
+        values[key] = {"label": label, "value": _get(key), "default": DEFAULTS.get(key, "")}
+    saved = request.args.get("saved")
+    return render_template("settings.html", fields=values, saved=saved)
+
+
+@app.route("/settings", methods=["POST"])
+def settings_save():
+    from middleware.config import reload_db_config, DB_PATH
+    conn = get_connection()
+    try:
+        for key, _ in _SETTINGS_KEYS:
+            val = request.form.get(key, "").strip()
+            conn.execute(
+                "INSERT OR REPLACE INTO config (clave, valor) VALUES (?, ?)",
+                (key, val),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    reload_db_config()
+    return redirect(url_for("settings", saved=1))
+
+
+# ======================================================================
+# Brands mapping
+# ======================================================================
+
+_BRANDS_PATH = __import__("pathlib").Path(__file__).resolve().parent.parent / "brands_mapping.json"
+
+
+def _load_brands() -> dict:
+    import json as _json
+    with open(_BRANDS_PATH, encoding="utf-8") as f:
+        return _json.load(f)
+
+
+def _save_brands(data: dict) -> None:
+    import json as _json
+    with open(_BRANDS_PATH, "w", encoding="utf-8") as f:
+        _json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+@app.route("/brands")
+def brands():
+    data = _load_brands()
+    sorted_brands = sorted(data.items(), key=lambda x: x[0].lower())
+    saved = request.args.get("saved")
+    deleted = request.args.get("deleted")
+    return render_template("brands.html", brands=sorted_brands, saved=saved, deleted=deleted)
+
+
+@app.route("/brands/add", methods=["POST"])
+def brands_add():
+    name = request.form.get("name", "").strip().lower()
+    search_url = request.form.get("search_url", "").strip()
+    result_selector = request.form.get("result_selector", "").strip()
+    if not name or not search_url:
+        return redirect(url_for("brands"))
+    data = _load_brands()
+    data[name] = {
+        "search_url": search_url,
+        "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
+    }
+    _save_brands(data)
+    return redirect(url_for("brands", saved=name))
+
+
+@app.route("/brands/delete", methods=["POST"])
+def brands_delete():
+    name = request.form.get("name", "").strip().lower()
+    if name:
+        data = _load_brands()
+        data.pop(name, None)
+        _save_brands(data)
+    return redirect(url_for("brands", deleted=name))
