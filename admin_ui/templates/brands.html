@@ -5,7 +5,7 @@
 <h1>Marcas</h1>
 
 {% if saved %}
-<div class="settings-sized">Marca "{{ saved }}" agregada correctamente.</div>
+<div class="settings-saved">Marca "{{ saved }}" guardada correctamente.</div>
 {% endif %}
 {% if deleted %}
 <div class="settings-deleted">Marca "{{ deleted }}" eliminada.</div>
@@ -28,33 +28,38 @@
 
 {# ---- Brand list ---- #}
 <div class="brands-list">
-  <h2>{{ brands|length }} marcas configuradas</h2>
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Marca</th>
-        <th>URL de búsqueda</th>
-        <th>Selector</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for name, info in brands %}
-      <tr>
-        <td class="cell--name">{{ name }}</td>
-        <td class="cell--mono">{{ info.search_url }}</td>
-        <td class="cell--mono">{{ info.result_selector }}</td>
-        <td>
-          <form method="post" action="{{ url_for('brands_delete') }}" style="display:inline">
-            <input type="hidden" name="name" value="{{ name }}">
-            <button type="submit" class="btn btn--reject btn--sm"
-                    onclick="return confirm('Eliminar marca \"{{ name }}\"?')">Eliminar</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="brands-list__header">
+    <h2><span id="brandCount">{{ brands|length }}</span> marcas configuradas</h2>
+    <input type="text" id="brandSearch" class="brands-search" placeholder="Buscar marca...">
+  </div>
+  {% for name, info in brands %}
+  <form method="post" action="{{ url_for('brands_edit') }}" class="brand-row" data-name="{{ name }}">
+    <input type="hidden" name="name" value="{{ name }}">
+    <span class="brand-row__name">{{ name }}</span>
+    <input type="text" name="search_url" value="{{ info.search_url }}" class="brand-row__input" required>
+    <input type="text" name="result_selector" value="{{ info.result_selector }}" class="brand-row__input">
+    <button type="submit" class="btn btn--sync btn--sm">Guardar</button>
+    <button type="button" class="btn btn--reject btn--sm" onclick="if(confirm('Eliminar marca &quot;{{ name }}&quot;?'))this.form.action='{{ url_for('brands_delete') }}';this.form.submit();">Eliminar</button>
+  </form>
+  {% endfor %}
 </div>
 
+<script>
+(function() {
+  var input = document.getElementById('brandSearch');
+  var count = document.getElementById('brandCount');
+  var rows = document.querySelectorAll('.brand-row');
+  var total = rows.length;
+  input.addEventListener('input', function() {
+    var q = this.value.toLowerCase();
+    var visible = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var match = rows[i].getAttribute('data-name').indexOf(q) !== -1;
+      rows[i].style.display = match ? '' : 'none';
+      if (match) visible++;
+    }
+    count.textContent = visible;
+  });
+})();
+</script>
 {% endblock %}

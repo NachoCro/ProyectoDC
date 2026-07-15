@@ -318,7 +318,49 @@ h3 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); }
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
-.brands-list h2 { font-size: 14px; color: var(--muted); }
+.brands-list h2 { font-size: 14px; color: var(--muted); margin: 0; }
+.brands-list__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.brands-search {
+  padding: 8px 14px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  width: 220px;
+}
+.brands-search:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.brand-row__name {
+  font-weight: 600;
+  font-size: 13px;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+.brand-row__input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.brand-row__input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(37,99,235,.12);
+}
 
 /* ====================================================================
    DIFF VIEWER (RF-12)

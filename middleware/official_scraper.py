@@ -58,6 +58,96 @@ def _infer_brand_from_name(nombre: str) -> str | None:
     return None
 
 
+# ── Name cleanup for search ─────────────────────────────────────────────────
+
+
+# Common prefixes/suffixes to remove from product names before searching.
+# These are generic descriptors that don't help with search and may confuse
+# brand site search engines.
+_NOISE_WORDS = {
+    # Spanish product types
+    "impresora", "imp", "monitor", "televisor", "tv", "audifonos", "audífonos",
+    "parlante", "bocina", "cargador", "cable", "adaptador", "mouse", "teclado",
+    "disco", "memoria", "ram", "procesador", "tarjeta", "fuente",
+    # English product types
+    "printer", "monitor", "speaker", "charger", "cable", "adapter",
+    "keyboard", "mouse", "drive", "memory", "card",
+    # Technology descriptors
+    "laser", "inkjet", "led", "lcd", "oled", "qled", "uhd", "fhd", "hd",
+    "4k", "8k", "smart", "wifi", "bluetooth",
+    "无线", "有线",  # Chinese wireless/wired
+    # Function descriptors
+    "mf", "mfp", " multifuncion", " multifuncional", "multifunction",
+    "monocromo", "monocromática", "monocromatico", "mono",
+    "color", "blanco", "negro", "gris",
+    # Brand names (will be removed separately)
+    "brother", "pantum", "samsung", "lg", "sony", "canon", "epson", "hp",
+    "dell", "lenovo", "asus", "acer", "msi", "apple", "huawei", "xiaomi",
+    "logitech", "razer", "corsair", "hyperx", "steelseries",
+    # Other common noise
+    "nuevo", "nueva", "original", "oferta", "promocion", "promoción",
+    "kit", "pack", "bundle", "set",
+}
+
+
+def _clean_name_for_search(nombre: str, marca: str = "") -> str:
+    """Clean up a product name for use as a search query.
+
+    Removes generic descriptors, brand names, and common noise words to
+    leave only the model number/identifier that brand sites can match.
+
+    Examples:
+        "IMPRESORA BROTHER DCP-1617NW" → "DCP-1617NW"
+        "IMP PANTUM MF LASER MONO BM5100FDW" → "BM5100FDW"
+        "Samsung Monitor Smart 32" M5 M50F FHD" → "M50F"
+        "LG OLED55C4PSA 55" 4K Smart TV" → "OLED55C4PSA"
+    """
+    if not nombre:
+        return nombre
+
+    import re
+
+    # Start with the full name
+    cleaned = nombre
+
+    # Remove brand name if provided
+    if marca:
+        cleaned = re.sub(re.escape(marca), "", cleaned, flags=re.IGNORECASE)
+
+    # Remove size patterns: 32", 55", 27", 32\u201d, etc.
+    cleaned = re.sub(r'\d+["\u201d\u2019\u2018]', '', cleaned)
+
+    # Remove pure numbers that look like sizes (2-3 digits)
+    cleaned = re.sub(r'\b\d{2,3}\b', '', cleaned)
+
+    # Remove noise words
+    words = cleaned.split()
+    filtered = []
+    for word in words:
+        word_clean = word.lower().strip(".,;:()[]{}!?\"'")
+        # Skip if it's a noise word
+        if word_clean in _NOISE_WORDS:
+            continue
+        # Skip size suffixes like , " or '"'
+        if word in ('"', '"', "'", "''", ",", ":"):
+            continue
+        # Skip standalone single characters that are likely noise
+        if len(word) == 1 and not word.isalnum():
+            continue
+        filtered.append(word)
+
+    result = " ".join(filtered).strip()
+
+    # Clean up extra spaces
+    result = re.sub(r'\s+', ' ', result).strip()
+
+    # If we removed too much, fall back to the original name
+    if len(result) < 3:
+        return nombre.strip()
+
+    return result
+
+
 # ── Selenium driver factory ──────────────────────────────────────────────────
 
 
@@ -100,10 +190,15 @@ def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) ->
     if not search_tpl or not selector:
         return None
 
-    # Use the full product name as the search query — brand search pages
-    # handle natural-language queries better than bare MPNs.
-    search_url = search_tpl.replace("{mpn}", product_name)
-    logger.info("  BRAND_SEARCH  searching %s for name=%r (MPN=%s)", key, product_name, mpn)
+    # Clean the product name for search — remove generic descriptors,
+    # brand names, and common noise to leave only the model number.
+    cleaned_name = _clean_name_for_search(product_name, marca)
+    logger.info(
+        "  BRAND_SEARCH  searching %s for cleaned_name=%r (original=%r, MPN=%s)",
+        key, cleaned_name, product_name, mpn,
+    )
+
+    search_url = search_tpl.replace("{mpn}", cleaned_name)
 
     driver = None
     try:
@@ -230,6 +325,86 @@ def _extract_meta(soup: BeautifulSoup) -> dict | None:
     )
 
 
+def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
+    """Extract the main product image URL from the page.
+
+    Tries multiple strategies in order:
+    1. JSON-LD image (already handled elsewhere, but this is a standalone helper)
+    2. OG image meta tag
+    3. <img> tags with product-related classes/ids/alt text
+    4. <img> in main content area with reasonable size
+    """
+    from urllib.parse import urljoin
+
+    def _normalize_url(url: str) -> str:
+        """Normalize relative URLs to absolute using current_url as base."""
+        if not url or url.startswith("data:"):
+            return url
+        if url.startswith("//"):
+            return "https:" + url
+        if url.startswith("/") and current_url:
+            return urljoin(current_url, url)
+        return url
+
+    # Strategy 1: OG image
+    for attr in ("property", "name"):
+        tag = soup.find("meta", attrs={attr: "og:image"})
+        if tag and tag.get("content"):
+            return _normalize_url(tag["content"].strip())
+
+    # Strategy 2: <img> with product-related attributes
+    product_img_selectors = [
+        "[class*='product'] img[src]",
+        "[class*='Product'] img[src]",
+        "[id*='product'] img[src]",
+        "[id*='Product'] img[src]",
+        "[data-testid*='product'] img[src]",
+        "[class*='gallery'] img[src]",
+        "[class*='Gallery'] img[src]",
+        "[class*='main-image'] img[src]",
+        "[class*='hero'] img[src]",
+        "[class*='detail'] img[src]",
+    ]
+    seen_srcs: set[str] = set()
+    for selector in product_img_selectors:
+        for img in soup.select(selector):
+            src = img.get("src", "").strip()
+            if not src or src in seen_srcs:
+                continue
+            # Skip tiny images (icons, spacers, etc.)
+            width = img.get("width", "")
+            height = img.get("height", "")
+            try:
+                if width and int(width) < 100:
+                    continue
+                if height and int(height) < 100:
+                    continue
+            except (ValueError, TypeError):
+                pass
+            # Skip data URIs and common icon patterns
+            if src.startswith("data:") or any(
+                skip in src.lower()
+                for skip in ("icon", "logo", "avatar", "pixel", "spacer", "blank")
+            ):
+                continue
+            seen_srcs.add(src)
+            return _normalize_url(src)
+
+    # Strategy 3: Any reasonably sized <img> in the page (last resort)
+    for img in soup.find_all("img"):
+        src = img.get("src", "").strip()
+        if not src or src.startswith("data:"):
+            continue
+        if any(skip in src.lower() for skip in ("icon", "logo", "avatar", "pixel", "spacer", "blank")):
+            continue
+        # Check alt text for product hints
+        alt = (img.get("alt") or "").lower()
+        if any(kw in alt for kw in ("product", "producto", "image", "foto")):
+            return _normalize_url(src)
+
+    return ""
+
+
 def _extract_tables(soup: BeautifulSoup) -> list[dict[str, str]]:
     """Extract key-value pairs from HTML ``<table>`` technical spec blocks.
 
@@ -288,6 +463,55 @@ def _extract_brand_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
 
     # ── LG: .result-info__spec-list ───────────────────────────────────────
     for item in soup.select(".result-info__spec-list li, .pd-spec__item"):
+        text = item.get_text(strip=True)
+        if ":" in text:
+            name, _, value = text.partition(":")
+            name, value = name.strip(), value.strip()
+            if name and value:
+                key_norm = name.lower().strip()
+                if key_norm not in seen:
+                    seen.add(key_norm)
+                    features.append({"nombre": name, "valor": value})
+
+    if features:
+        return features
+
+    # ── Brother: .product-spec__item, .spec-table, #spec ──────────────────
+    for item in soup.select(".product-spec__item, .spec-item, .specification-item"):
+        name_el = item.select_one(".product-spec__label, .spec-label, .spec-name, dt, th")
+        value_el = item.select_one(".product-spec__value, .spec-value, .spec-desc, dd, td")
+        name = (name_el.get_text(strip=True) if name_el else "").strip()
+        value = (value_el.get_text(strip=True) if value_el else "").strip()
+        if not name or not value:
+            continue
+        key_norm = name.lower().strip()
+        if key_norm in seen:
+            continue
+        seen.add(key_norm)
+        features.append({"nombre": name, "valor": value})
+
+    if features:
+        return features
+
+    # ── Pantum: .specs-block, .product-specs, .technical-specs ────────────
+    for item in soup.select(".specs-block__item, .product-specs__item, .tech-spec__item"):
+        name_el = item.select_one(".specs-block__label, .product-specs__label, .tech-spec__label")
+        value_el = item.select_one(".specs-block__value, .product-specs__value, .tech-spec__value")
+        name = (name_el.get_text(strip=True) if name_el else "").strip()
+        value = (value_el.get_text(strip=True) if value_el else "").strip()
+        if not name or not value:
+            continue
+        key_norm = name.lower().strip()
+        if key_norm in seen:
+            continue
+        seen.add(key_norm)
+        features.append({"nombre": name, "valor": value})
+
+    if features:
+        return features
+
+    # ── Generic: .product-detail__specs, .detail-specs, .specs-table ──────
+    for item in soup.select(".product-detail__specs li, .detail-specs li, .specs-table tr"):
         text = item.get_text(strip=True)
         if ":" in text:
             name, _, value = text.partition(":")
@@ -375,9 +599,119 @@ _SESSION.headers.update({
 })
 
 
+# ── Category page detection ─────────────────────────────────────────────────
+
+
+def _is_category_page(soup: BeautifulSoup, url: str) -> bool:
+    """Detect if the page is a category/listing page rather than a product detail page.
+
+    Returns True if the page looks like a category listing (multiple product cards,
+    filters, pagination) rather than a single product detail page.
+    """
+    url_lower = url.lower()
+
+    # URL patterns that indicate category pages
+    category_url_patterns = [
+        "/product-center", "/products", "/catalog", "/category",
+        "/list", "/shop", "/store", "/collection", "/all",
+        "?page=", "&page=", "/p-", "/page-",
+        "/search/", "/buscar/",
+    ]
+    if any(pat in url_lower for pat in category_url_patterns):
+        # But check if it's actually a product page with weird URL
+        # If page has JSON-LD Product, it's a product page despite URL
+        for script in soup.find_all("script", type="application/ld+json"):
+            raw = script.string
+            if raw and '"Product"' in raw:
+                return False
+        return True
+
+    # HTML-based detection: multiple product cards/links
+    product_card_selectors = [
+        "[class*='product-card']",
+        "[class*='product-card']",
+        "[class*='ProductCard']",
+        "[class*='product-item']",
+        "[class*='product-grid']",
+        "[class*='product-list']",
+        "[data-testid*='product-card']",
+    ]
+    for selector in product_card_selectors:
+        cards = soup.select(selector)
+        if len(cards) >= 3:  # 3+ product cards = likely category page
+            return True
+
+    # Check for filter/facet elements (common on category pages)
+    filter_selectors = [
+        "[class*='filter']",
+        "[class*='Filter']",
+        "[class*='facet']",
+        "[class*='Facet']",
+        "[class*='sidebar'] select",
+    ]
+    for selector in filter_selectors:
+        if soup.select(selector):
+            # Filters + multiple links = category page
+            links = soup.find_all("a", href=True)
+            product_links = [
+                a for a in links
+                if any(kw in (a.get("href") or "").lower()
+                       for kw in ("/product", "/item", "/detail", "/p/"))
+            ]
+            if len(product_links) >= 3:
+                return True
+
+    # Heuristic: many product links but no JSON-LD Product = category page
+    links = soup.find_all("a", href=True)
+    product_link_count = sum(
+        1 for a in links
+        if any(kw in (a.get("href") or "").lower()
+               for kw in ("/product", "/item", "/detail", "/p/"))
+    )
+    if product_link_count >= 5:
+        # Check if page has JSON-LD Product (if not, it's likely a category)
+        has_jsonld_product = False
+        for script in soup.find_all("script", type="application/ld+json"):
+            raw = script.string
+            if raw and '"Product"' in raw:
+                has_jsonld_product = True
+                break
+        if not has_jsonld_product:
+            return True
+
+    return False
+
+
+def _find_product_link_on_category(soup: BeautifulSoup, base_url: str) -> str | None:
+    """Find the most relevant product link on a category/listing page.
+
+    Looks for links that look like product detail pages and returns the first one.
+    """
+    from urllib.parse import urljoin
+
+    links = soup.find_all("a", href=True)
+    product_links = []
+
+    for a in links:
+        href = a.get("href", "")
+        if not href or href.startswith("#") or href.startswith("javascript:"):
+            continue
+        full_url = urljoin(base_url, href).lower()
+        # Look for product detail URL patterns
+        if any(pat in full_url for pat in ("/product", "/item", "/detail", "/p/")):
+            # Prefer links with product-related text
+            text = a.get_text(strip=True).lower()
+            if any(kw in text for kw in ("spec", "detail", "view", "more", "info")):
+                return urljoin(base_url, href)
+            product_links.append(urljoin(base_url, href))
+
+    # Return first product-looking link
+    return product_links[0] if product_links else None
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  PUBLIC API — Manual URL enrichment (the only entry point)
-# ════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 
 def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
@@ -443,6 +777,9 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
             )
         except Exception:
             page_source = driver.page_source
+
+        # Get the final URL after redirects (important for category detection)
+        final_url = driver.current_url
         time.sleep(API_SLEEP)
     except Exception as exc:
         logger.warning("  MANUAL_URL  id=%d  selenium fetch failed: %s", product_id, exc)
@@ -452,6 +789,48 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
             driver.quit()
 
     soup = BeautifulSoup(page_source, "lxml")
+
+    # 0. Category page detection — if we landed on a listing/category page,
+    #    try to find and follow the first product link.
+    #    Use final_url (after redirects) instead of the original url.
+    if _is_category_page(soup, final_url):
+        product_url = _find_product_link_on_category(soup, final_url)
+        if product_url and product_url != url:
+            logger.info(
+                "  MANUAL_URL  id=%d  landed on category page, following product link: %s",
+                product_id, product_url,
+            )
+            driver = None
+            try:
+                driver = _create_driver()
+                driver.set_script_timeout(SELENIUM_TIMEOUT)
+                driver.get(product_url)
+                try:
+                    WebDriverWait(driver, SELENIUM_TIMEOUT).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR,
+                             "table, .specs, .specifications, .tech-specs, "
+                             ".pdd32-product-spec__content-item, "
+                             "[class*='spec'], [class*='Spec'], "
+                             "[data-testid*='spec'], [id*='spec']")
+                        )
+                    )
+                except Exception:
+                    pass
+                try:
+                    page_source = driver.execute_script(
+                        "return document.documentElement.outerHTML"
+                    )
+                except Exception:
+                    page_source = driver.page_source
+                time.sleep(API_SLEEP)
+                url = product_url  # Update URL for logging
+            except Exception as exc:
+                logger.warning("  MANUAL_URL  id=%d  follow-up fetch failed: %s", product_id, exc)
+            finally:
+                if driver is not None:
+                    driver.quit()
+            soup = BeautifulSoup(page_source, "lxml")
 
     # 1. Try JSON-LD (most structured)
     result = _extract_json_ld(soup)
@@ -477,9 +856,15 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
             if tf["nombre"].lower().strip() not in existing_names:
                 result["caracteristicas"].append(tf)
 
+    # 3b. If no image from JSON-LD/OG, try <img> tag extraction
+    if not result.get("imagen_url"):
+        img_url = _extract_image(soup, final_url)
+        if img_url:
+            result["imagen_url"] = img_url
+
     logger.info(
         "  MANUAL_URL  id=%d  extracted %d characteristics from %s",
-        product_id, len(result.get("caracteristicas") or []), url,
+        product_id, len(result.get("caracteristicas") or []), final_url,
     )
 
     # 4. Persist to DB

@@ -52,7 +52,7 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "brother": {
-    "search_url": "https://support.brother.com/g/b/branch.aspx?c=us&lang=en&brbrand=default&q={mpn}",
+    "search_url": "https://www.brother.com.ar/search#q={mpn}",
     "result_selector": "a[href*='product'], a[href*='model'], .result-card a, a[class*='product']"
   },
   "adata": {
@@ -68,7 +68,7 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "asus": {
-    "search_url": "https://www.asus.com/us/searchResult/?searchType=products&searchKey={mpn}",
+    "search_url": "https://www.asus.com/ar/searchresult?searchType=products&searchKey={mpn}",
     "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
   },
   "sentey": {
@@ -124,7 +124,7 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "pantum": {
-    "search_url": "https://www.pantum.com/es/search-result/?keyword={mpn}",
+    "search_url": "https://www.pantum.com.es/search/product?s={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "gtc": {

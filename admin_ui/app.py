@@ -603,3 +603,21 @@ def brands_delete():
         data.pop(name, None)
         _save_brands(data)
     return redirect(url_for("brands", deleted=name))
+
+
+@app.route("/brands/edit", methods=["POST"])
+def brands_edit():
+    name = request.form.get("name", "").strip().lower()
+    search_url = request.form.get("search_url", "").strip()
+    result_selector = request.form.get("result_selector", "").strip()
+    if not name or not search_url:
+        return redirect(url_for("brands"))
+    data = _load_brands()
+    if name not in data:
+        return redirect(url_for("brands"))
+    data[name] = {
+        "search_url": search_url,
+        "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
+    }
+    _save_brands(data)
+    return redirect(url_for("brands", saved=name))
