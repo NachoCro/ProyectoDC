@@ -23,7 +23,7 @@ def _run_enrich(dry_run: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Middleware PrestaShop ↔ Icecat  —  Extracción por goteo"
+        description="Middleware PrestaShop — Extracción por goteo"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -44,7 +44,7 @@ def main() -> None:
     try:
         pending = run_extraction(dry_run=args.dry_run)
         logger.info(
-            "Extracción finalizada. %d productos pendientes de enriquecimiento Icecat.",
+            "Extracción finalizada. %d productos pendientes de enriquecimiento.",
             len(pending),
         )
     except Exception:
@@ -56,7 +56,7 @@ def main() -> None:
         enriched = _run_enrich(dry_run=args.dry_run)
         logger.info("Enriquecimiento finalizado. %d productos procesados.", enriched)
     except Exception:
-        logger.exception("Error durante el enriquecimiento Icecat")
+        logger.exception("Error durante el enriquecimiento")
         sys.exit(1)
 
 

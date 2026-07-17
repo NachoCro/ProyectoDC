@@ -4,87 +4,169 @@
 <div class="dash">
   <h1>Dashboard</h1>
 
-  <div class="dash-stats">
-    <div class="stat-box stat-box--pending">
-      <span class="stat-box__value">{{ pending }}</span>
-      <span class="stat-box__label">Pendientes</span>
-    </div>
-    <div class="stat-box stat-box--done">
-      <span class="stat-box__value">{{ listos }}</span>
-      <span class="stat-box__label">Listos</span>
-    </div>
-  </div>
-
-  <div class="dash-center">
-    <form method="post" action="{{ url_for('run_pipeline') }}" id="pipelineForm" class="play-wrap">
-      <button type="submit" class="btn-play" id="playBtn"
-              {% if pipeline_running %}disabled{% endif %}
-              title="Ejecutar pipeline completo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      </button>
-      <span class="play-label" id="playLabel">
-        {% if pipeline_running %}Pipeline en ejecución...{% else %}Ejecutar pipeline{% endif %}
-      </span>
-      <div class="play-bar {% if pipeline_running %}play-bar--active{% endif %}" id="playBar">
-        <div class="play-bar__fill"></div>
+  <div class="dash-layout">
+    <div class="dash-left">
+      <div class="dash-stats">
+        <div class="stat-box stat-box--pending">
+          <span class="stat-box__value">{{ pending }}</span>
+          <span class="stat-box__label">Pendientes</span>
+        </div>
+        <div class="stat-box stat-box--done">
+          <span class="stat-box__value">{{ listos }}</span>
+          <span class="stat-box__label">Listos</span>
+        </div>
       </div>
-    </form>
 
-    <form method="post" action="{{ url_for('extract') }}" id="extractForm">
-      <button type="submit" class="btn btn--lg"
-              {% if pipeline_running %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
-        Extraer productos
-      </button>
-    </form>
+      <div class="dash-center">
+        <form method="post" action="{{ url_for('run_pipeline') }}" id="pipelineForm" class="play-wrap">
+          <button type="submit" class="btn-play" id="playBtn"
+                  {% if pipeline_running %}disabled{% endif %}
+                  title="Ejecutar pipeline completo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <span class="play-label" id="playLabel">
+            {% if pipeline_running %}Pipeline en ejecución...{% else %}Ejecutar pipeline{% endif %}
+          </span>
+          <div class="play-bar {% if pipeline_running %}play-bar--active{% endif %}" id="playBar">
+            <div class="play-bar__fill"></div>
+          </div>
+        </form>
+
+        <form method="post" action="{{ url_for('extract') }}" id="extractForm">
+          <button type="submit" class="btn btn--lg"
+                  {% if pipeline_running %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
+            Extraer productos
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="dash-right">
+      <div class="terminal" id="terminal">
+        <div class="terminal__header">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">Pipeline</span>
+        </div>
+        <div class="terminal__body" id="terminalBody">
+          {% if pipeline_running %}
+            <div class="terminal__line terminal__line--info">Pipeline en ejecución...</div>
+          {% else %}
+            <div class="terminal__line terminal__line--idle">Esperando pipeline...</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
 (function() {
-  var form = document.getElementById('pipelineForm');
-  if (!form) return;
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var btn = document.getElementById('playBtn');
-    var bar = document.getElementById('playBar');
-    var label = document.getElementById('playLabel');
-    btn.disabled = true;
-    bar.classList.add('play-bar--active');
-    label.textContent = 'Procesando...';
-    fetch(form.action, { method: 'POST' })
+  var terminalBody = document.getElementById('terminalBody');
+  var pollTimer = null;
+  var isRunning = {{ pipeline_running|lower }};
+  var btn = document.getElementById('playBtn');
+  var bar = document.getElementById('playBar');
+  var label = document.getElementById('playLabel');
+
+  function resetPlay() {
+    btn.disabled = false;
+    bar.classList.remove('play-bar--active');
+    label.textContent = 'Ejecutar pipeline';
+  }
+
+  function pollStatus() {
+    clearTimeout(pollTimer);
+    fetch('/api/pipeline-status')
       .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) { window.location.href = data.redirect; }
-        else {
-          alert('Error: ' + (data.error || 'Error desconocido'));
-          btn.disabled = false;
-          bar.classList.remove('play-bar--active');
-          label.textContent = 'Ejecutar pipeline';
+      .then(function(state) {
+        renderTerminal(state);
+        if (state.running) {
+          pollTimer = setTimeout(pollStatus, 1500);
+        } else if (isRunning && !state.finished_at) {
+          pollTimer = setTimeout(pollStatus, 800);
+        } else if (isRunning && state.finished_at) {
+          isRunning = false;
+          resetPlay();
         }
       })
-      .catch(function(err) {
-        alert('Error de red: ' + err);
-        btn.disabled = false;
-        bar.classList.remove('play-bar--active');
-        label.textContent = 'Ejecutar pipeline';
+      .catch(function() {
+        if (isRunning) pollTimer = setTimeout(pollStatus, 2000);
       });
-  });
+  }
+
+  function renderTerminal(state) {
+    if (!state || !state.logs || state.logs.length === 0) {
+      terminalBody.innerHTML = '<div class="terminal__line terminal__line--idle">Esperando pipeline...</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < state.logs.length; i++) {
+      var log = state.logs[i];
+      var cls = 'terminal__line';
+      if (log.msg.indexOf('COMPLETADO') !== -1) cls += ' terminal__line--ok';
+      else if (log.msg.indexOf('FALLO') !== -1 || log.msg.indexOf('ERROR') !== -1) cls += ' terminal__line--error';
+      else if (log.msg.indexOf('Iniciando') !== -1) cls += ' terminal__line--info';
+      html += '<div class="' + cls + '">' + escHtml(log.msg) + '</div>';
+    }
+    terminalBody.innerHTML = html;
+    terminalBody.scrollTop = terminalBody.scrollHeight;
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+  }
+
+  if (isRunning) {
+    pollStatus();
+  }
+
+  var form = document.getElementById('pipelineForm');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      btn.disabled = true;
+      bar.classList.add('play-bar--active');
+      label.textContent = 'Procesando...';
+      isRunning = true;
+      fetch(form.action, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            pollStatus();
+          } else {
+            alert('Error: ' + (data.error || 'Error desconocido'));
+            isRunning = false;
+            resetPlay();
+          }
+        })
+        .catch(function(err) {
+          alert('Error de red: ' + err);
+          isRunning = false;
+          resetPlay();
+        });
+    });
+  }
 
   var extractForm = document.getElementById('extractForm');
-  if (!extractForm) return;
-  extractForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var btn = extractForm.querySelector('button[type="submit"]');
-    btn.disabled = true;
-    btn.style.opacity = '0.5';
-    fetch(extractForm.action, { method: 'POST' })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) { window.location.href = data.redirect; }
-        else { alert('Error: ' + (data.error || 'Error desconocido')); btn.disabled = false; btn.style.opacity = ''; }
-      })
-      .catch(function(err) { alert('Error de red: ' + err); btn.disabled = false; btn.style.opacity = ''; });
-  });
+  if (extractForm) {
+    extractForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var extractBtn = extractForm.querySelector('button[type="submit"]');
+      extractBtn.disabled = true;
+      extractBtn.style.opacity = '0.5';
+      fetch(extractForm.action, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) { window.location.href = data.redirect; }
+          else { alert('Error: ' + (data.error || 'Error desconocido')); extractBtn.disabled = false; extractBtn.style.opacity = ''; }
+        })
+        .catch(function(err) { alert('Error de red: ' + err); extractBtn.disabled = false; extractBtn.style.opacity = ''; });
+    });
+  }
 })();
 </script>
 {% endblock %}

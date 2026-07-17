@@ -57,12 +57,12 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 
 
-def score_match(local_text: str, icecat_text: str) -> float:
+def score_match(local_text: str, proposed_text: str) -> float:
     """Return a similarity score (0–1) between two descriptive texts."""
-    if not local_text or not icecat_text:
+    if not local_text or not proposed_text:
         return 0.0
     emb_local = generate_embedding(local_text)
-    emb_icecat = generate_embedding(icecat_text)
-    if emb_local is None or emb_icecat is None:
+    emb_proposed = generate_embedding(proposed_text)
+    if emb_local is None or emb_proposed is None:
         return 0.0
-    return cosine_similarity(emb_local, emb_icecat)
+    return cosine_similarity(emb_local, emb_proposed)

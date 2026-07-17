@@ -20,7 +20,7 @@ def _short_circuit(id_prestashop: int, ean: str | None) -> bool:
     """Check whether this product can be skipped.
 
     RF-04 — EAN already exists in local DB.
-    RF-05 — product was previously marked as not found in Icecat.
+    RF-05 — product was previously marked as not found.
     """
     if ean and has_ean_in_db(ean):
         return True
@@ -41,7 +41,7 @@ def run(dry_run: bool = False) -> list[dict]:
     3. Cross-reference EAN / id_prestashop against local DB — short-circuit if
        already known (RF-04, RF-05).
     4. Insert new products into ``productos`` with
-       ``estado_actualizacion = 'desactualizado'`` for later Icecat processing.
+       ``estado_actualizacion = 'desactualizado'`` for later enrichment processing.
     5. Respect batch-size limit and API throttle (RF-10).
     """
     client = PrestashopClient()

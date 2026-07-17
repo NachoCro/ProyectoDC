@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Admin — PrestaShop ↔ Icecat{% endblock %}</title>
+  <title>{% block title %}Admin — PrestaShop{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
   <nav class="nav">
@@ -16,10 +22,41 @@
       <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}class="active"{% endif %}>Auditoría</a>
       <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>Configuración</a>
     </div>
+    <button class="nav__toggle" id="themeToggle" title="Cambiar tema">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
   </nav>
 
   <main class="container">
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+    (function() {
+      var btn = document.getElementById('themeToggle');
+      var html = document.documentElement;
+      btn.addEventListener('click', function() {
+        var current = html.getAttribute('data-theme');
+        var next = current === 'dark' ? '' : 'dark';
+        if (next) {
+          html.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+        } else {
+          html.removeAttribute('data-theme');
+          localStorage.removeItem('theme');
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

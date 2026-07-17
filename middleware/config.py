@@ -9,8 +9,6 @@ load_dotenv()
 DEFAULTS = {
     "PRESTASHOP_API_URL": "",
     "PRESTASHOP_API_KEY": "",
-    "ICECAT_USERNAME": "",
-    "ICECAT_API_TOKEN": "",
     "DB_PATH": "catalogo.db",
     "BATCH_SIZE": "10",
     "API_SLEEP": "2",
@@ -48,16 +46,36 @@ def _get(key: str) -> str:
 
 
 def reload_db_config() -> None:
-    """Force reload from DB (call after saving settings)."""
+    """Force reload of DB-backed config (clears cache)."""
     global _DB_CACHE
     _DB_CACHE = None
+
+
+def get_config(key: str, default: str = "") -> str:
+    """Public getter — reads from DB cache, falls back to env/default."""
+    return _get(key) or default
+
+
+def set_config(key: str, value: str) -> None:
+    """Write a config value to the DB ``config`` table and invalidate cache."""
+    import os as _os
+    db_path = _os.getenv("DB_PATH", "catalogo.db")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO config (clave, valor) VALUES (?, ?) "
+            "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    reload_db_config()
 
 
 # ── Public config constants (used by all modules) ──────────────────────
 DB_PATH = _get("DB_PATH")
 PRESTASHOP_API_URL = _get("PRESTASHOP_API_URL").rstrip("/")
 PRESTASHOP_API_KEY = _get("PRESTASHOP_API_KEY")
-ICECAT_USERNAME = _get("ICECAT_USERNAME")
-ICECAT_API_TOKEN = _get("ICECAT_API_TOKEN")
 BATCH_SIZE = int(_get("BATCH_SIZE"))
 API_SLEEP = int(_get("API_SLEEP"))

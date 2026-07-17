@@ -3,9 +3,6 @@
 ``scrape_from_direct_url(url, product_id)`` accepts a human-verified
 official URL, fetches the page, extracts structured data (JSON-LD, OG meta,
 HTML tables), and persists the attributes into the local 3NF EAV tables.
-
-Output is normalised to the same dict shape as ``icecat.py:_normalize``
-so the rest of the pipeline (merge → approve → push) works unchanged.
 """
 
 import json
@@ -22,7 +19,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import API_SLEEP
-from .db import get_connection, mark_icecat_not_found
+from .db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +34,178 @@ try:
     _BRANDS_MAP = json.loads(_BRANDS_JSON.read_text(encoding="utf-8"))
 except FileNotFoundError:
     pass
+
+
+# ── Sitemap-based brand search ──────────────────────────────────────────────
+
+_SITEMAP_CACHE_DIR = Path("/tmp")
+
+
+def _fetch_sitemap_urls(
+    sitemap_url: str,
+    url_pattern: str = "",
+    cache_ttl_hours: int = 24,
+) -> list[str]:
+    """Fetch a sitemap XML and return filtered <loc> URLs.
+
+    Caches the XML on disk under ``/tmp/<brand>_sitemap.xml``.  If the cache
+    file exists and is younger than *cache_ttl_hours*, it is reused without
+    a network fetch.
+
+    Parameters
+    ----------
+    sitemap_url:
+        Full URL of the sitemap XML (e.g. ``https://www.acer.com/sitemap_ares.xml``).
+    url_pattern:
+        If provided, only URLs containing this substring are returned.
+    cache_ttl_hours:
+        Cache lifetime in hours (default 24).
+
+    Returns
+    -------
+    list[str]
+        List of matching ``<loc>`` URLs from the sitemap.
+    """
+    import time as _time
+    from xml.etree import ElementTree as ET
+
+    brand_key = sitemap_url.split("//")[-1].split("/")[0].replace(".", "_")
+    cache_path = _SITEMAP_CACHE_DIR / f"{brand_key}_sitemap.xml"
+
+    xml_bytes: bytes | None = None
+
+    # Try cache first
+    if cache_path.exists():
+        age_hours = (_time.time() - cache_path.stat().st_mtime) / 3600
+        if age_hours < cache_ttl_hours:
+            logger.debug("  SITEMAP  using cached %s (%.1fh old)", cache_path, age_hours)
+            xml_bytes = cache_path.read_bytes()
+
+    # Fetch from network if cache miss or expired
+    if xml_bytes is None:
+        try:
+            resp = _SESSION.get(sitemap_url, timeout=30)
+            resp.raise_for_status()
+            xml_bytes = resp.content
+            cache_path.write_bytes(xml_bytes)
+            logger.info(
+                "  SITEMAP  fetched %s (%d bytes) → cached to %s",
+                sitemap_url, len(xml_bytes), cache_path,
+            )
+        except Exception as exc:
+            logger.warning("  SITEMAP  fetch failed %s: %s", sitemap_url, exc)
+            # Fallback: try stale cache
+            if cache_path.exists():
+                logger.info("  SITEMAP  falling back to stale cache %s", cache_path)
+                xml_bytes = cache_path.read_bytes()
+            else:
+                return []
+
+    # Parse XML
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        logger.warning("  SITEMAP  XML parse error: %s", exc)
+        return []
+
+    # Handle sitemap index (nested <sitemap><loc>)
+    # Some brands use sitemap index files that point to sub-sitemaps.
+    ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    urls: list[str] = []
+
+    # Check if this is a sitemap index (contains <sitemap> children)
+    sitemap_tags = root.findall("sm:sitemap", ns) or root.findall("sitemap")
+    if sitemap_tags:
+        logger.info("  SITEMAP  detected sitemap index with %d sub-sitemaps", len(sitemap_tags))
+        for sm_tag in sitemap_tags[:5]:  # limit to first 5 sub-sitemaps
+            sub_loc = sm_tag.findtext("sm:loc", default="", namespaces=ns) or sm_tag.findtext("loc", default="")
+            if sub_loc:
+                sub_urls = _fetch_sitemap_urls(sub_loc, url_pattern, cache_ttl_hours=0)
+                urls.extend(sub_urls)
+        return urls
+
+    # Normal sitemap: extract <url><loc> entries
+    for url_tag in root.findall("sm:url", ns) or root.findall("url"):
+        loc = url_tag.findtext("sm:loc", default="", namespaces=ns) or url_tag.findtext("loc", default="")
+        if not loc:
+            continue
+        if url_pattern and url_pattern not in loc:
+            continue
+        urls.append(loc)
+
+    logger.info("  SITEMAP  extracted %d URLs (pattern=%r)", len(urls), url_pattern)
+    return urls
+
+
+def _search_brand_sitemap(
+    sitemap_url: str,
+    url_pattern: str,
+    product_name: str,
+    marca: str,
+    pid: int = 0,
+) -> str | None:
+    """Search a brand's sitemap for the best-matching product URL.
+
+    Fetches the sitemap XML (with disk cache), extracts product URLs matching
+    *url_pattern*, normalises their path slugs, and picks the one with the
+    highest fuzzy-match score against the cleaned product name.
+
+    Returns the best-matching URL if the score exceeds a threshold, else ``None``.
+    """
+    from difflib import SequenceMatcher
+
+    urls = _fetch_sitemap_urls(sitemap_url, url_pattern)
+    if not urls:
+        logger.debug("  SITEMAP_SEARCH  no URLs found for %s", sitemap_url)
+        return None
+
+    cleaned_name = _clean_name_for_search(product_name, marca)
+    # Also try with just the MPN-like part (uppercase, alphanumeric+dashes)
+    import re
+    model_tokens = re.findall(r'[A-Za-z0-9][A-Za-z0-9\-]+', cleaned_name)
+    search_terms = " ".join(model_tokens).lower() if model_tokens else cleaned_name.lower()
+
+    logger.info(
+        "  SITEMAP_SEARCH  id=%d  searching %d URLs for %r (cleaned=%r)",
+        pid, len(urls), product_name, search_terms,
+    )
+
+    best_url = None
+    best_score = 0.0
+    threshold = 0.4
+
+    for url in urls:
+        # Extract the last meaningful path segment as the "slug"
+        path = url.split("?")[0].rstrip("/")
+        slug = path.rsplit("/", 1)[-1] if "/" in path else path
+        # Normalise: replace hyphens/underscores with spaces, lowercase
+        slug_norm = slug.replace("-", " ").replace("_", " ").lower()
+        # Remove common suffixes like .html
+        slug_norm = re.sub(r'\.html?$', '', slug_norm)
+
+        score = SequenceMatcher(None, search_terms, slug_norm).ratio()
+
+        # Boost exact model token matches (e.g. "A315" in slug vs name)
+        for token in model_tokens:
+            if token.lower() in slug_norm:
+                score = min(score + 0.15, 1.0)
+
+        if score > best_score:
+            best_score = score
+            best_url = url
+
+    if best_url and best_score >= threshold:
+        logger.info(
+            "  SITEMAP_SEARCH  id=%d  best match score=%.2f → %s",
+            pid, best_score, best_url,
+        )
+        return best_url
+
+    logger.debug(
+        "  SITEMAP_SEARCH  id=%d  no match above threshold %.2f (best=%.2f)",
+        pid, threshold, best_score,
+    )
+    return None
 
 
 # ── Brand inference from product name ────────────────────────────────────────
@@ -185,6 +354,17 @@ def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) ->
     if not entry:
         return None
 
+    # ── Sitemap strategy ─────────────────────────────────────────────────
+    if entry.get("strategy") == "sitemap":
+        sitemap_url = entry.get("sitemap_url", "")
+        url_pattern = entry.get("url_pattern", "")
+        if sitemap_url:
+            return _search_brand_sitemap(
+                sitemap_url, url_pattern, product_name, marca, pid,
+            )
+        return None
+
+    # ── Standard search-url strategy ─────────────────────────────────────
     search_tpl = entry.get("search_url", "")
     selector = entry.get("result_selector", "")
     if not search_tpl or not selector:
@@ -237,7 +417,7 @@ def _build_result(
     caracteristicas: list | None = None,
     imagen_url: str = "",
 ) -> dict:
-    """Return a dict matching the Icecat ``_normalize`` shape."""
+    """Return a normalized product data dict."""
     return {
         "title": title,
         "descripcion": descripcion,
@@ -612,46 +792,72 @@ def _is_category_page(soup: BeautifulSoup, url: str) -> bool:
 
     # URL patterns that indicate category pages
     category_url_patterns = [
-        "/product-center", "/products", "/catalog", "/category",
+        "/product-center", "/catalog", "/category",
         "/list", "/shop", "/store", "/collection", "/all",
         "?page=", "&page=", "/p-", "/page-",
         "/search/", "/buscar/",
     ]
-    if any(pat in url_lower for pat in category_url_patterns):
-        # But check if it's actually a product page with weird URL
-        # If page has JSON-LD Product, it's a product page despite URL
+
+    # Check if URL matches category patterns
+    is_category_url = any(pat in url_lower for pat in category_url_patterns)
+
+    # Exclude product detail pages: URLs ending in .html, with numeric IDs,
+    # or paths that look like product slugs (e.g., /products/2024/12/13/...)
+    if is_category_url:
+        path = url.split("?")[0]  # Remove query params
+        segments = path.rstrip("/").split("/")
+
+        # URLs ending in .html are typically product detail pages
+        if path.endswith(".html"):
+            is_category_url = False
+        # URLs with many numeric segments (like Brother's date-based IDs)
+        elif sum(1 for seg in segments if seg.isdigit()) >= 3:
+            is_category_url = False
+        # URLs with "products" followed by date-like patterns
+        elif "/products/" in url_lower:
+            # Check if it looks like a product detail page
+            after_products = url_lower.split("/products/")[1] if "/products/" in url_lower else ""
+            if re.search(r'\d{4}/\d{2}/\d{2}', after_products):
+                is_category_url = False
+
+    if is_category_url:
+        # Check if it's actually a product page with JSON-LD Product
         for script in soup.find_all("script", type="application/ld+json"):
             raw = script.string
             if raw and '"Product"' in raw:
                 return False
         return True
 
-    # HTML-based detection: multiple product cards/links
+    # HTML-based detection: multiple product cards/links in the main content area
+    # Exclude navigation, header, footer elements
     product_card_selectors = [
-        "[class*='product-card']",
-        "[class*='product-card']",
-        "[class*='ProductCard']",
-        "[class*='product-item']",
-        "[class*='product-grid']",
-        "[class*='product-list']",
-        "[data-testid*='product-card']",
+        "main [class*='product-card']",
+        "main [class*='ProductCard']",
+        "main [class*='product-item']",
+        "main [class*='product-grid']",
+        "main [class*='product-list']",
+        "main [data-testid*='product-card']",
+        ".content [class*='product-card']",
+        ".content [class*='product-item']",
     ]
     for selector in product_card_selectors:
         cards = soup.select(selector)
-        if len(cards) >= 3:  # 3+ product cards = likely category page
+        if len(cards) >= 3:  # 3+ product cards in main content = likely category page
             return True
 
     # Check for filter/facet elements (common on category pages)
+    # Only count if there are also product detail links in the main content
     filter_selectors = [
-        "[class*='filter']",
-        "[class*='Filter']",
-        "[class*='facet']",
-        "[class*='Facet']",
-        "[class*='sidebar'] select",
+        "main [class*='filter']",
+        "main [class*='Filter']",
+        "main [class*='facet']",
+        "main [class*='Facet']",
+        ".content [class*='filter']",
+        ".content [class*='facet']",
     ]
     for selector in filter_selectors:
         if soup.select(selector):
-            # Filters + multiple links = category page
+            # Filters + multiple product detail links = category page
             links = soup.find_all("a", href=True)
             product_links = [
                 a for a in links
@@ -661,23 +867,25 @@ def _is_category_page(soup: BeautifulSoup, url: str) -> bool:
             if len(product_links) >= 3:
                 return True
 
-    # Heuristic: many product links but no JSON-LD Product = category page
-    links = soup.find_all("a", href=True)
-    product_link_count = sum(
-        1 for a in links
-        if any(kw in (a.get("href") or "").lower()
-               for kw in ("/product", "/item", "/detail", "/p/"))
-    )
-    if product_link_count >= 5:
-        # Check if page has JSON-LD Product (if not, it's likely a category)
-        has_jsonld_product = False
-        for script in soup.find_all("script", type="application/ld+json"):
-            raw = script.string
-            if raw and '"Product"' in raw:
-                has_jsonld_product = True
-                break
-        if not has_jsonld_product:
-            return True
+    # Heuristic: many product links in main content but no JSON-LD Product = category page
+    main_content = soup.find("main") or soup.find("article") or soup.find(class_="content")
+    if main_content:
+        links = main_content.find_all("a", href=True)
+        product_link_count = sum(
+            1 for a in links
+            if any(kw in (a.get("href") or "").lower()
+                   for kw in ("/product", "/item", "/detail", "/p/"))
+        )
+        if product_link_count >= 5:
+            # Check if page has JSON-LD Product (if not, it's likely a category)
+            has_jsonld_product = False
+            for script in soup.find_all("script", type="application/ld+json"):
+                raw = script.string
+                if raw and '"Product"' in raw:
+                    has_jsonld_product = True
+                    break
+            if not has_jsonld_product:
+                return True
 
     return False
 
@@ -730,7 +938,7 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     Returns
     -------
     dict | None
-        Normalized product data dict (same shape as Icecat) on success,
+        Normalized product data dict on success,
         ``None`` if the fetch or parse fails.
 
     Side effects
@@ -738,7 +946,6 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     - Writes characteristics into ``producto_caracteristicas`` (EAV).
     - Updates ``productos.icecat_json``, ``productos.marca``,
       ``productos.modelo``, ``productos.imagen_url``.
-    - Clears ``productos.icecat_not_found`` for this product.
     - Appends an audit log entry.
     """
     logger.info("  MANUAL_URL  id=%d  fetching %s", product_id, url)
@@ -880,7 +1087,6 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
                    marca           = COALESCE(NULLIF(?, ''), marca),
                    modelo          = COALESCE(NULLIF(?, ''), modelo),
                    imagen_url      = COALESCE(?, imagen_url),
-                   icecat_not_found = 0,
                    estado_actualizacion = 'desactualizado',
                    fecha_sincronizacion = datetime('now')
                WHERE id_prestashop = ?""",

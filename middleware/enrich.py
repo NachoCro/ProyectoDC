@@ -1,10 +1,9 @@
-"""Enrichment pipeline: DB cache → brand site search → Icecat → translate → embed → score → store → push.
+"""Enrichment pipeline: DB cache → brand site search → AI agent → translate → embed → score → store → push.
 
 Automated pipeline tries sources in order:
-1. Local DB (existing ``icecat_json`` from previous run)
+1. Local DB (existing data from previous run)
 2. Brand site search (official site → first product result → scrape)
-3. Icecat (by EAN → Brand+MPN fallback)
-4. AI agent (DuckDuckGo web search, last resort)
+3. AI agent (DuckDuckGo web search, last resort)
 
 Manual URL enrichment is handled separately via the Admin UI
 (``scrape_from_direct_url``).
@@ -17,48 +16,19 @@ import json
 import logging
 
 from .config import BATCH_SIZE
-from .db import get_connection, mark_not_found, mark_icecat_not_found
+from .db import get_connection, mark_not_found
 from .embedding import embedding_to_bytes, generate_embedding, score_match
-from .icecat import IcecatClient, IcecatError
 from .translate import translate_product
 from .characteristics import merge_characteristics
 from .descriptions import get_description
+from . import pipeline_state
 
 logger = logging.getLogger(__name__)
 
-_NOT_FOUND = object()
-_TRANSIENT_ERROR = object()
 
-
-def _try_fetch(
-    icecat: IcecatClient,
-    label: str,
-    fetch_fn,
-    dry_run: bool,
-    pid: int,
-) -> dict | None:
-    """Call *fetch_fn*, returning data on success or sentinel on failure.
-
-    Returns ``None`` when Icecat cleanly reports "not found".
-    Returns ``_NOT_FOUND`` when we should mark ``product_not_found``.
-    Returns ``_TRANSIENT_ERROR`` on transport / parse errors (retry next run).
-    """
-    try:
-        data = fetch_fn()
-    except IcecatError as exc:
-        logger.error("  ERROR  id=%d  %s  %s", pid, label, exc)
-        return _TRANSIENT_ERROR
-
-    if data is None:
-        logger.info("  NOT FOUND  id=%d  %s", pid, label)
-        return _NOT_FOUND
-
-    return data
-
-
-def _build_description(icecat_data: dict, caracteristicas: list | None = None) -> str:
+def _build_description(product_data: dict, caracteristicas: list | None = None) -> str:
     """Build full description from characteristics as ``*nombre*: valor`` lines."""
-    chars = caracteristicas or icecat_data.get("caracteristicas") or []
+    chars = caracteristicas or product_data.get("caracteristicas") or []
     if not chars:
         return ""
     lines = "".join(
@@ -69,7 +39,7 @@ def _build_description(icecat_data: dict, caracteristicas: list | None = None) -
 
 
 def _write_eav(conn, pid: int, caracteristicas: list[dict]) -> None:
-    """Write Icecat characteristics into local EAV tables."""
+    """Write characteristics into local EAV tables."""
     conn.execute(
         "DELETE FROM producto_caracteristicas WHERE id_prestashop = ?", (pid,)
     )
@@ -100,7 +70,7 @@ def _write_eav(conn, pid: int, caracteristicas: list[dict]) -> None:
 def _push_to_prestashop(
     conn,
     pid: int,
-    icecat_data: dict,
+    product_data: dict,
     marca: str,
     modelo: str,
     subcat_name: str,
@@ -109,7 +79,7 @@ def _push_to_prestashop(
     """Push enriched data to PrestaShop.
 
     On success updates local DB (estado_actualizacion, EAV, audit).
-    On failure keeps ``icecat_json`` so the admin UI can retry.
+    On failure keeps data so the admin UI can retry.
     """
     if dry_run:
         return True
@@ -118,11 +88,11 @@ def _push_to_prestashop(
 
     client = AdminPrestashopClient()
 
-    # Merge Icecat characteristics with default template
+    # Merge characteristics with default template
     merged_caracteristicas = merge_characteristics(
-        icecat_data.get("caracteristicas") or [], subcat_name,
+        product_data.get("caracteristicas") or [], subcat_name,
     )
-    desc = _build_description(icecat_data, merged_caracteristicas)
+    desc = _build_description(product_data, merged_caracteristicas)
 
     excel_desc = get_description(subcat_name)
     updates = {
@@ -154,7 +124,7 @@ def _push_to_prestashop(
         return False
 
     # Upload image (non-blocking)
-    imagen_url = icecat_data.get("imagen_url") or ""
+    imagen_url = product_data.get("imagen_url") or ""
     if imagen_url:
         client.upload_product_image(pid, imagen_url)
 
@@ -162,7 +132,6 @@ def _push_to_prestashop(
     conn.execute(
         """UPDATE productos
            SET estado_actualizacion = 'actualizado',
-               icecat_json = NULL,
                fecha_sincronizacion = datetime('now')
            WHERE id_prestashop = ?""",
         (pid,),
@@ -184,7 +153,6 @@ def _push_to_prestashop(
 
 
 def _fetch_and_prepare(
-    icecat: IcecatClient,
     pid: int,
     ean: str | None,
     mpn: str | None,
@@ -197,17 +165,14 @@ def _fetch_and_prepare(
 
     Automated pipeline tries sources in order:
     1. Brand site search (official site → first product result → scrape)
-    2. Icecat by EAN
-    3. Icecat by Brand + MPN
-    4. AI agent (web search + extraction, last resort before not-found)
-    5. Name-only search (infer brand from product name, search brand site)
-    6. not_found / icecat_not_found
+    2. AI agent (web search + extraction, last resort)
+    3. Name-only search (infer brand from product name, search brand site)
+    4. not_found
 
-    Returns ``(product_data, translated, icecat_desc)`` or
+    Returns ``(product_data, translated, description)`` or
     ``(None, None, '')`` on failure.
     """
     product_data = None
-    tried = False
     was_not_found = False
 
     # ── 0. Brand site search (official site → product page → scrape) ──────
@@ -217,48 +182,26 @@ def _fetch_and_prepare(
         found_url = _search_brand_site(marca, mpn or "", nombre, pid)
         if found_url:
             logger.info("  BRAND_SEARCH  id=%d  scraping %s", pid, found_url)
+            pipeline_state.add_log(f"Brand site encontrado, scrapeando: {found_url}")
             product_data = scrape_from_direct_url(found_url, pid)
             if product_data is not None:
                 n_chars = len(product_data.get("caracteristicas") or [])
                 logger.info("  BRAND_SEARCH  id=%d  succeeded (%d characteristics)", pid, n_chars)
+                pipeline_state.add_log(f"Brand site OK: {n_chars} características extraídas")
 
-    # 1. Icecat by EAN
-    if not product_data and ean:
-        tried = True
-        result = _try_fetch(
-            icecat, f"EAN={ean}",
-            lambda e=ean: icecat.get_product_by_ean(e),
-            dry_run, pid,
-        )
-        if isinstance(result, dict):
-            product_data = result
-        elif result is _NOT_FOUND:
-            was_not_found = True
-
-    # 2. Icecat by Brand + MPN
-    if not product_data and marca and mpn:
-        tried = True
-        result = _try_fetch(
-            icecat, f"brand={marca} mpn={mpn}",
-            lambda b=marca, m=mpn: icecat.get_product_by_brand_mpn(b, m),
-            dry_run, pid,
-        )
-        if isinstance(result, dict):
-            product_data = result
-        elif result is _NOT_FOUND:
-            was_not_found = True
-
-    # ── 3. AI agent (web search + extraction, last resort before not-found) ──
+    # ── 1. AI agent (web search + extraction, last resort) ────────────────
     if not product_data and marca and mpn and not dry_run:
         from .ai_agent import enrich_with_ai
 
         logger.info("  AI_AGENT  id=%d  trying web search + extraction", pid)
+        pipeline_state.add_log(f"Buscando con AI agent web search...")
         product_data = enrich_with_ai(marca, mpn, nombre)
         if product_data is not None:
             n_chars = len(product_data.get("caracteristicas") or [])
             logger.info("  AI_AGENT  id=%d  succeeded (%d characteristics)", pid, n_chars)
+            pipeline_state.add_log(f"AI agent OK: {n_chars} características extraídas")
 
-    # ── 4. Name-only search (no brand/MPN, but has a product name) ─────────
+    # ── 2. Name-only search (no brand/MPN, but has a product name) ─────────
     if not product_data and nombre and not dry_run:
         from .official_scraper import (
             _infer_brand_from_name, _search_brand_site, scrape_from_direct_url,
@@ -287,15 +230,13 @@ def _fetch_and_prepare(
             )
 
     if product_data is None:
-        if not tried and not (marca and mpn):
+        if not (marca and mpn):
+            pipeline_state.add_log(f"Sin datos — sin EAN ni MPN, marcando not_found")
             logger.info("  SKIP  id=%d  (no EAN, no MPN) — marking not found", pid)
             if not dry_run:
                 mark_not_found(pid)
-        elif was_not_found:
-            logger.info("  NOT_FOUND  id=%d  (EAN=%s  brand=%s mpn=%s)", pid, ean, marca, mpn)
-            if not dry_run:
-                mark_icecat_not_found(pid)
         else:
+            pipeline_state.add_log(f"Reintentar después — datos insuficientes")
             logger.warning("  RETRY-LATER  id=%d  (EAN=%s  brand=%s mpn=%s)", pid, ean, marca, mpn)
         return None, None, ""
 
@@ -303,7 +244,7 @@ def _fetch_and_prepare(
     modelo_row = modelo or ""
     local_desc = f"{marca} {modelo_row}".strip()
 
-    icecat_desc = " ".join(
+    description = " ".join(
         filter(None, [
             translated.get("Title") or translated.get("title")
             or translated.get("Titulo") or translated.get("titulo"),
@@ -314,29 +255,28 @@ def _fetch_and_prepare(
         ])
     )
 
-    similarity = score_match(local_desc, icecat_desc)
+    similarity = score_match(local_desc, description)
     translated["_score"] = round(similarity, 4)
     translated["_ean"] = ean or ""
     translated["_id_prestashop"] = pid
 
-    return product_data, translated, icecat_desc
+    return product_data, translated, description
 
 
 def run(dry_run: bool = False) -> int:
-    """Enrich pending products via Icecat and push to PrestaShop.
+    """Enrich pending products and push to PrestaShop.
 
     Two entry paths:
-    - Products with ``icecat_json IS NULL`` → fetch data from Icecat, then push.
-    - Products with ``icecat_json IS NOT NULL`` (stuck from previous runs)
+    - Products with existing data (stuck from previous runs)
       → parse existing data and push without re-fetching.
+    - Products without data → fetch from brand site search / AI agent, then push.
 
-    Icecat-not-found products are flagged ``icecat_not_found = 1`` and
+    Not-found products are flagged ``product_not_found = 1`` and
     remain in the queue for manual URL enrichment via the Admin UI.
 
     On success: ``estado_actualizacion = 'actualizado'``, EAV written, audit logged.
-    On failure: ``icecat_json`` kept so admin UI can retry.
+    On failure: data kept so admin UI can retry.
     """
-    icecat = IcecatClient()
     processed = 0
 
     conn = get_connection()
@@ -348,7 +288,6 @@ def run(dry_run: bool = False) -> int:
                FROM productos p
                LEFT JOIN subcategorias s ON p.id_subcategoria = s.id_subcategoria
                WHERE p.product_not_found = 0
-                 AND p.icecat_not_found = 0
                  AND p.estado_actualizacion = 'desactualizado'
                LIMIT ?""",
             (BATCH_SIZE,),
@@ -359,8 +298,9 @@ def run(dry_run: bool = False) -> int:
             return 0
 
         logger.info("Processing %d products", len(rows))
+        pipeline_state.start(len(rows))
 
-        for row in rows:
+        for i, row in enumerate(rows, 1):
             pid = row["id_prestashop"]
             ean = row["ean"]
             mpn = row["mpn"]
@@ -368,34 +308,36 @@ def run(dry_run: bool = False) -> int:
             modelo = row["modelo"] or ""
             nombre = row["nombre"] or ""
 
+            pipeline_state.update(i, pid, nombre)
+
             existing_json = row["icecat_json"]
-            icecat_data = None
+            product_data = None
             translated = None
 
-            # ---- Path A: existing Icecat data (just push) -----------------
+            # ---- Path A: existing data (just push) -------------------------
             if existing_json:
                 try:
                     parsed = json.loads(existing_json) if isinstance(existing_json, str) else existing_json
                 except (json.JSONDecodeError, TypeError):
                     parsed = None
                 if parsed:
-                    # Use stored data for push; icecat_data is the same payload
-                    icecat_data = parsed
+                    product_data = parsed
                     translated = parsed
-                    logger.info("  EXISTING  id=%d  — pushing stored Icecat data", pid)
+                    logger.info("  EXISTING  id=%d  — pushing stored data", pid)
+                    pipeline_state.add_log(f"Usando datos guardados para id={pid}")
 
-            # ---- Path B: fetch from Icecat --------------------------------
-            if icecat_data is None:
-                icecat_data, translated, icecat_desc = _fetch_and_prepare(
-                    icecat, pid, ean, mpn, marca, modelo, nombre, dry_run,
+            # ---- Path B: fetch from brand site / AI agent ------------------
+            if product_data is None:
+                product_data, translated, description = _fetch_and_prepare(
+                    pid, ean, mpn, marca, modelo, nombre, dry_run,
                 )
-                if icecat_data is None:
+                if product_data is None:
+                    pipeline_state.add_log(f"Sin datos para id={pid}, saltando")
                     continue
 
-                # Store icecat_json + vector_descriptivo before pushing
+                # Store data + vector_descriptivo before pushing
                 if not dry_run:
-                    # Generate embedding from translated description
-                    emb = generate_embedding(icecat_desc)
+                    emb = generate_embedding(description)
                     vec_bytes = embedding_to_bytes(emb) if emb is not None else None
 
                     conn.execute(
@@ -409,28 +351,28 @@ def run(dry_run: bool = False) -> int:
                         (
                             json.dumps(translated, ensure_ascii=False),
                             vec_bytes,
-                            (icecat_data.get("marca") or "").strip() or marca,
-                            (icecat_data.get("modelo") or "").strip() or modelo,
-                            (icecat_data.get("imagen_url") or "").strip() or None,
+                            (product_data.get("marca") or "").strip() or marca,
+                            (product_data.get("modelo") or "").strip() or modelo,
+                            (product_data.get("imagen_url") or "").strip() or None,
                             pid,
                         ),
                     )
                     conn.commit()
 
             # ---- Push to PrestaShop ---------------------------------------
-            marca_final = (icecat_data.get("marca") or "").strip() or marca
-            modelo_final = (icecat_data.get("modelo") or "").strip() or modelo
+            marca_final = (product_data.get("marca") or "").strip() or marca
+            modelo_final = (product_data.get("modelo") or "").strip() or modelo
 
             if not dry_run:
                 if translated and "_score" not in translated:
                     modelo_row = modelo or ""
                     local_desc = f"{marca} {modelo_row}".strip()
-                    icecat_desc = " ".join(filter(None, [
+                    description = " ".join(filter(None, [
                         translated.get("Title") or translated.get("title"),
                         translated.get("Summary") or translated.get("summary"),
                         translated.get("Description") or translated.get("description"),
                     ]))
-                    similarity = score_match(local_desc, icecat_desc)
+                    similarity = score_match(local_desc, description)
                     translated["_score"] = round(similarity, 4)
 
                 conn.execute(
@@ -443,22 +385,25 @@ def run(dry_run: bool = False) -> int:
                     (
                         marca_final,
                         modelo_final,
-                        (icecat_data.get("imagen_url") or "").strip() or None,
+                        (product_data.get("imagen_url") or "").strip() or None,
                         pid,
                     ),
                 )
                 conn.commit()
 
                 subcat_name = row["subcat_name"]
+                pipeline_state.add_log(f"Enviando a PrestaShop id={pid}...")
                 push_ok = _push_to_prestashop(
-                    conn, pid, icecat_data, marca_final, modelo_final,
+                    conn, pid, product_data, marca_final, modelo_final,
                     subcat_name, dry_run,
                 )
                 if not push_ok:
+                    pipeline_state.add_log(f"FALLO push id={pid} — en cola para reintento")
                     logger.warning("  KEPT IN QUEUE  id=%d  (push failed, admin can retry)", pid)
                     continue
 
             processed += 1
+            pipeline_state.add_log(f"COMPLETADO id={pid} — {marca_final} {modelo_final}")
             logger.info(
                 "  COMPLETED  id=%d  marca=%s  modelo=%s  EAN=%s",
                 pid, marca_final, modelo_final,
@@ -466,6 +411,7 @@ def run(dry_run: bool = False) -> int:
             )
 
     finally:
+        pipeline_state.finish()
         conn.close()
 
     logger.info("Pipeline complete: %d products processed and pushed", processed)

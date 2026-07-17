@@ -277,7 +277,7 @@ class AdminPrestashopClient(PrestashopClient):
     def sync_characteristics_as_features(
         self, characteristics: list[dict],
     ) -> list[tuple[int, int]]:
-        """Ensure every Icecat characteristic exists as a PrestaShop Feature +
+        """Ensure every characteristic exists as a PrestaShop Feature +
         Feature-Value pair.
 
         Fetches all existing features and values in just 2 GET calls, then

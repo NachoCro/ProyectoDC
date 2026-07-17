@@ -118,14 +118,6 @@ def _ensure_schema() -> None:
             except sqlite3.OperationalError:
                 pass
 
-            # Migration 006: icecat_not_found flag for Icecat-specific 404s
-            try:
-                conn.execute(
-                    "ALTER TABLE productos ADD COLUMN icecat_not_found INTEGER NOT NULL DEFAULT 0"
-                )
-            except sqlite3.OperationalError:
-                pass
-
             # ── Config table (app settings) ─────────────────────────────
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS config (
@@ -187,7 +179,6 @@ def _ensure_schema() -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_ean  ON productos(ean)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_mpn  ON productos(mpn)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_estado_actualizacion ON productos(estado_actualizacion)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_icecat_not_found ON productos(icecat_not_found)")
 
             conn.commit()
         finally:
@@ -208,7 +199,7 @@ def has_ean_in_db(ean: str) -> bool:
     """Check whether *any* row in `productos` already holds this EAN.
 
     Short-circuit gate (RF-04): if True, the product is already known locally
-    and Icecat lookup can be skipped entirely.
+    and lookup can be skipped entirely.
     """
     conn = get_connection()
     try:
@@ -292,19 +283,6 @@ def mark_not_found(id_prestashop: int) -> None:
         conn.close()
 
 
-def mark_icecat_not_found(id_prestashop: int) -> None:
-    """Flag product as Icecat-not-found for manual URL enrichment."""
-    conn = get_connection()
-    try:
-        conn.execute(
-            "UPDATE productos SET icecat_not_found = 1 WHERE id_prestashop = ?",
-            (id_prestashop,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def sync_producto_from_prestashop(
     conn: sqlite3.Connection,
     id_prestashop: int,
@@ -322,7 +300,7 @@ def sync_producto_from_prestashop(
     Returns a list of updated field names (empty list = nothing changed).
     """
     row = conn.execute(
-        "SELECT ean, mpn, marca, nombre, product_not_found, icecat_not_found FROM productos WHERE id_prestashop = ?",
+        "SELECT ean, mpn, marca, nombre, product_not_found FROM productos WHERE id_prestashop = ?",
         (id_prestashop,),
     ).fetchone()
     if not row:
@@ -346,10 +324,6 @@ def sync_producto_from_prestashop(
     # Reset product_not_found if it was set — product exists in PrestaShop
     if row["product_not_found"]:
         set_parts.append("product_not_found = 0")
-
-    # Reset icecat_not_found if it was set
-    if row["icecat_not_found"]:
-        set_parts.append("icecat_not_found = 0")
 
     if not set_parts:
         return []

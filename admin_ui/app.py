@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
@@ -31,18 +32,6 @@ def _audit(conn, id_producto: int, actor: str, accion: str, detalle: str | None 
         "INSERT INTO audit_log (id_producto, actor, accion, detalle) VALUES (?, ?, ?, ?)",
         (id_producto, actor, accion, detalle),
     )
-
-
-def _parse_icecat(product: dict) -> dict | None:
-    raw = product.get("icecat_json")
-    if not raw:
-        return None
-    if isinstance(raw, dict):
-        return raw
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 # ── pipeline lock ──────────────────────────────────────────────────────
@@ -94,6 +83,8 @@ def _release_pipeline_lock() -> None:
 
 @app.route("/")
 def dashboard():
+    from middleware.config import get_config
+
     conn = get_connection()
     try:
         pending = conn.execute(
@@ -109,12 +100,36 @@ def dashboard():
     finally:
         conn.close()
 
+    # Parse pipeline_current: "2/5|123|Product Name" → (current, total, pid, name)
+    pipeline_current_raw = get_config("pipeline_current", "")
+    pipeline_current = None
+    if pipeline_current_raw:
+        try:
+            parts = pipeline_current_raw.split("|")
+            progress = parts[0].split("/")
+            pipeline_current = {
+                "current": int(progress[0]),
+                "total": int(progress[1]),
+                "pid": parts[1] if len(parts) > 1 else "",
+                "name": parts[2] if len(parts) > 2 else "",
+            }
+        except (ValueError, IndexError):
+            pipeline_current = None
+
     return render_template(
         "dashboard.html",
         pending=pending,
         listos=listos,
         pipeline_running=_is_pipeline_running(),
+        pipeline_current=pipeline_current,
     )
+
+
+@app.route("/api/pipeline-status")
+def pipeline_status():
+    """Return real-time pipeline state as JSON (polled by dashboard)."""
+    from middleware.pipeline_state import get_state
+    return jsonify(get_state())
 
 
 # ======================================================================
@@ -134,14 +149,12 @@ def products():
 
         if status == "pending":
             query += " WHERE icecat_json IS NOT NULL"
-        elif status == "icecat_not_found":
-            query += " WHERE icecat_not_found = 1"
         elif status == "approved":
             query += " WHERE estado_actualizacion = 'actualizado'"
         elif status == "errors":
             query += " WHERE product_not_found = 1"
         elif status == "to_enrich":
-            query += " WHERE icecat_json IS NULL AND product_not_found = 0 AND icecat_not_found = 0 AND estado_actualizacion = 'desactualizado'"
+            query += " WHERE icecat_json IS NULL AND product_not_found = 0 AND estado_actualizacion = 'desactualizado'"
 
         query += " ORDER BY id_prestashop DESC"
 
@@ -170,7 +183,15 @@ def diff(pid: int):
             return f"Producto {pid} no encontrado", 404
 
         product = dict(row)
-        icecat = _parse_icecat(product)
+
+        # Parse icecat_json for the diff view
+        raw_json = product.get("icecat_json")
+        proposal = None
+        if raw_json:
+            try:
+                proposal = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+            except (json.JSONDecodeError, TypeError):
+                proposal = None
 
         # current characteristics from local DB
         curr_chars = conn.execute(
@@ -187,7 +208,7 @@ def diff(pid: int):
     return render_template(
         "diff.html",
         product=product,
-        icecat=icecat,
+        proposal=proposal,
         curr_chars=curr_chars,
     )
 
@@ -212,9 +233,17 @@ def approve(pid: int):
             return f"Producto {pid} no encontrado", 404
 
         product = dict(row)
-        icecat = _parse_icecat(product)
-        if icecat is None:
-            return f"Producto {pid} no tiene datos Icecat pendientes", 400
+
+        # Parse proposal from icecat_json
+        raw_json = product.get("icecat_json")
+        proposal = None
+        if raw_json:
+            try:
+                proposal = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+            except (json.JSONDecodeError, TypeError):
+                proposal = None
+        if proposal is None:
+            return f"Producto {pid} no tiene datos pendientes", 400
 
         subcat_name = product.get("subcat_name") or ""
 
@@ -222,7 +251,7 @@ def approve(pid: int):
         activate = request.form.get("activate", "0") == "1"
 
         # Build description from characteristics only:  *nombre*: valor
-        chars = icecat.get("caracteristicas") or []
+        chars = proposal.get("caracteristicas") or []
         merged_chars = merge_characteristics(chars, subcat_name)
         desc = ""
         if merged_chars:
@@ -247,7 +276,7 @@ def approve(pid: int):
             client.put_product(pid, updates, feature_pairs=feature_pairs or None)
 
             # upload image if available
-            imagen_url = icecat.get("imagen_url") or product.get("imagen_url") or ""
+            imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
             if imagen_url:
                 img_id = client.upload_product_image(pid, imagen_url)
                 if img_id is not None:
@@ -260,9 +289,9 @@ def approve(pid: int):
             return jsonify({"ok": False, "error": str(exc)}), 502
 
         # -- update local DB -----------------------------------------------
-        marca_icecat = icecat.get("marca") or product["marca"]
-        modelo_icecat = icecat.get("modelo") or product["modelo"]
-        imagen_url = icecat.get("imagen_url") or product.get("imagen_url") or ""
+        marca_final = proposal.get("marca") or product["marca"]
+        modelo_final = proposal.get("modelo") or product["modelo"]
+        imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
 
         conn.execute(
             """UPDATE productos
@@ -272,7 +301,7 @@ def approve(pid: int):
                    imagen_url = ?,
                    fecha_sincronizacion = datetime('now')
                WHERE id_prestashop = ?""",
-            (marca_icecat, modelo_icecat, imagen_url or None, pid),
+            (marca_final, modelo_final, imagen_url or None, pid),
         )
 
         # write merged characteristics locally (EAV)
@@ -307,8 +336,8 @@ def approve(pid: int):
 
         accion = "aprobado_y_activado" if activate else "aprobado"
         detalle = {
-            "marca": marca_icecat,
-            "modelo": modelo_icecat,
+            "marca": marca_final,
+            "modelo": modelo_final,
             "activate": activate,
         }
         img_status = updates.get("imagen_subida")
@@ -365,7 +394,6 @@ def re_sync(pid: int):
         conn.execute(
             """UPDATE productos
                SET product_not_found = 0,
-                   icecat_not_found = 0,
                    icecat_json = NULL,
                    estado_actualizacion = 'desactualizado'
                WHERE id_prestashop = ?""",
@@ -413,7 +441,7 @@ def scrape_url(pid: int):
 
 @app.route("/enrich", methods=["POST"])
 def enrich():
-    """Run the Icecat enrichment pipeline for pending products."""
+    """Run the enrichment pipeline for pending products."""
     from middleware.enrich import run as enrich_run
 
     try:
@@ -455,23 +483,25 @@ def run_pipeline():
     """Extract inactive products then enrich them — mirrors ``python main.py``."""
     if not _acquire_pipeline_lock():
         return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
+
+    from middleware import pipeline_state
     from middleware.extract import run as extract_run
     from middleware.enrich import run as enrich_run
-    try:
+
+    def _run():
         try:
-            pending = extract_run(dry_run=False)
-            enriched = enrich_run(dry_run=False)
+            extract_run(dry_run=False)
+            enrich_run(dry_run=False)
         except Exception as exc:
             logger.error("Pipeline error: %s", exc)
-            return jsonify({"ok": False, "error": str(exc)}), 500
-        return jsonify({
-            "ok": True,
-            "inserted": len(pending),
-            "enriched": enriched,
-            "redirect": url_for("dashboard"),
-        })
-    finally:
-        _release_pipeline_lock()
+            pipeline_state.add_log(f"ERROR: {exc}")
+        finally:
+            pipeline_state.finish()
+            _release_pipeline_lock()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "redirect": url_for("dashboard")})
 
 
 # ======================================================================
@@ -515,8 +545,6 @@ def audit():
 _SETTINGS_KEYS = [
     ("PRESTASHOP_API_URL", "PrestaShop API URL"),
     ("PRESTASHOP_API_KEY", "PrestaShop API Key"),
-    ("ICECAT_USERNAME", "Icecat Username"),
-    ("ICECAT_API_TOKEN", "Icecat API Token"),
     ("BATCH_SIZE", "Batch Size"),
     ("API_SLEEP", "API Sleep (segundos)"),
 ]

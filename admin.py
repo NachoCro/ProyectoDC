@@ -16,7 +16,7 @@ def _setup_logging(verbose: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Admin UI — PrestaShop ↔ Icecat  (Flask dev server)"
+        description="Admin UI — PrestaShop (Flask dev server)"
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--host", default="127.0.0.1", help="Bind address")

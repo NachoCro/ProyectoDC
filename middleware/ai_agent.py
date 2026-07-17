@@ -5,7 +5,7 @@ the HTML, and extracts structured data using JSON-LD, OG meta tags,
 and HTML table parsing.
 
 This is the last resort in the enrichment cascade, tried only after
-Icecat returns not-found.
+brand site search fails.
 """
 
 import logging

@@ -5,8 +5,6 @@
 <div class="tabs">
   <a class="tab {{ 'tab--active' if current_status == 'pending' }}"
      href="{{ url_for('products', status='pending') }}">Pendientes</a>
-  <a class="tab {{ 'tab--active' if current_status == 'icecat_not_found' }}"
-     href="{{ url_for('products', status='icecat_not_found') }}">Sin Icecat</a>
   <a class="tab {{ 'tab--active' if current_status == 'to_enrich' }}"
      href="{{ url_for('products', status='to_enrich') }}">Sin procesar</a>
   <a class="tab {{ 'tab--active' if current_status == 'approved' }}"
@@ -15,6 +13,7 @@
      href="{{ url_for('products', status='errors') }}">Con errores</a>
 </div>
 
+<div class="table-wrap">
 <table class="table">
   <thead>
     <tr>
@@ -45,8 +44,6 @@
       <td>
         {% if p.estado_actualizacion == 'actualizado' %}
           <span class="badge badge--ok">actualizado</span>
-        {% elif p.icecat_not_found %}
-          <span class="badge badge--warn">sin Icecat</span>
         {% elif p.tiene_propuesta %}
           <span class="badge badge--warn">pendiente</span>
         {% elif p.product_not_found %}
@@ -64,4 +61,5 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

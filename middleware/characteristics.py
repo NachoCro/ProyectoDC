@@ -2,7 +2,7 @@
 
 Reads ``default_characteristics.json`` (templates keyed by subcategory name)
 and ``subcategory_mapping.json`` (DB subcategory → template key), then merges
-Icecat characteristics with the default template.
+product characteristics with the default template.
 """
 
 import json
@@ -57,30 +57,30 @@ def get_template(subcat_name: str) -> list[dict]:
 
 
 def merge_characteristics(
-    icecat_caracteristicas: list[dict],
+    proposed_caracteristicas: list[dict],
     subcat_name: str,
 ) -> list[dict]:
-    """Merge Icecat characteristics with the default template for *subcat_name*.
+    """Merge characteristics with the default template for *subcat_name*.
 
     Rules:
     1. Every entry from the template is included.
-    2. If Icecat provides a matching characteristic (by name), its value is used.
-    3. Extra Icecat entries not in the template are appended at the end.
+    2. If a matching characteristic is provided (by name), its value is used.
+    3. Extra entries not in the template are appended at the end.
     4. Names are compared case-insensitively.
 
     Returns a single merged list ready for ``sync_characteristics_as_features``.
     """
     template = get_template(subcat_name)
     if not template:
-        return icecat_caracteristicas
+        return proposed_caracteristicas
 
-    # Build a lookup of Icecat values by lowercased name (first wins)
-    icecat_by_name: dict[str, str] = {}
-    for ch in icecat_caracteristicas:
+    # Build a lookup of proposed values by lowercased name (first wins)
+    proposed_by_name: dict[str, str] = {}
+    for ch in proposed_caracteristicas:
         nombre = (ch.get("nombre") or "").strip()
         valor = (ch.get("valor") or "").strip()
-        if nombre and nombre.lower() not in icecat_by_name:
-            icecat_by_name[nombre.lower()] = valor
+        if nombre and nombre.lower() not in proposed_by_name:
+            proposed_by_name[nombre.lower()] = valor
 
     merged: list[dict] = []
     seen: set[str] = set()
@@ -92,11 +92,11 @@ def merge_characteristics(
         key = nombre.lower()
         seen.add(key)
 
-        valor = icecat_by_name.get(key, tpl.get("valor_default", ""))
+        valor = proposed_by_name.get(key, tpl.get("valor_default", ""))
         merged.append({"nombre": nombre, "valor": valor})
 
-    # Append extra Icecat entries that weren't in the template
-    for ch in icecat_caracteristicas:
+    # Append extra entries that weren't in the template
+    for ch in proposed_caracteristicas:
         nombre = (ch.get("nombre") or "").strip()
         valor = (ch.get("valor") or "").strip()
         if nombre and nombre.lower() not in seen:

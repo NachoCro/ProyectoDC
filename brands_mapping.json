@@ -4,8 +4,8 @@
     "result_selector": "a[href*='product'], .product-tile a, a[class*='product']"
   },
   "nisuta": {
-    "search_url": "https://nisuta.com/productos.asp?search={mpn}",
-    "result_selector": "a[href*='producto'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/nisuta-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "netmak": {
     "search_url": "https://netmak.ar/?s={mpn}&post_type=product",
@@ -72,8 +72,8 @@
     "result_selector": "a[href*='/product/'], .product-card a, a[class*='product']"
   },
   "sentey": {
-    "search_url": "https://www.sentey.com/es/buscar.php?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/sentey-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "casio": {
     "search_url": "https://www.casio.com/es/search/?q={mpn}",
@@ -88,8 +88,8 @@
     "result_selector": "a[href*='product'], a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "lexar": {
-    "search_url": "https://www.lexar.com/search-result/?search={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/lexar-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "philips": {
     "search_url": "https://www.philips.com.ar/c-w/search.html#q={mpn}",
@@ -120,12 +120,12 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "amd": {
-    "search_url": "https://www.amd.com/en/search.html#q={mpn}",
+    "search_url": "https://www.amd.com/en/search/site-search.html#q={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "pantum": {
     "search_url": "https://www.pantum.com.es/search/product?s={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "result_selector": "a[href*='product-center/'][href$='.html']"
   },
   "gtc": {
     "search_url": "https://listado.mercadolibre.com.ar/gtc-{mpn}",
@@ -164,8 +164,12 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "thermaltake": {
-    "search_url": "https://www.thermaltake.com/search/result/?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://www.thermaltake.com/catalogsearch/result/?q={mpn}",
+    "result_selector": ".product-card a, a[href*='product']"
+  },
+  "thermaltakeusa": {
+    "search_url": "https://www.thermaltakeusa.com/search?q={mpn}",
+    "result_selector": ".product-card a"
   },
   "kassel": {
     "search_url": "https://listado.mercadolibre.com.ar/kassel-{mpn}",
@@ -180,8 +184,8 @@
     "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
   },
   "verbatim": {
-    "search_url": "https://www.verbatim.com/index/search.php?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/verbatim-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "caselogic": {
     "search_url": "https://www.caselogic.com/es-es/search?q={mpn}",
@@ -216,20 +220,16 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "hyperx": {
-    "search_url": "https://row.hyperx.com/pages/search-results-page?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
-  "lyonn": {
-    "search_url": "https://lyonn.com.ar/?s={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://hyperx.com/search?q={mpn}",
+    "result_selector": ".product-card a"
   },
   "hasar": {
     "search_url": "https://grupohasar.com/?s={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "wacom": {
-    "search_url": "https://www.wacom.com/es-es/search-results?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/wacom-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "panasonic": {
     "search_url": "https://www.panasonic.com/es/search.html?q={mpn}",
@@ -243,25 +243,22 @@
     "search_url": "https://www.moonki.com/?s={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
-  "cifra": {
-    "search_url": "https://cifrars.com.ar/?s={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
   "xerox": {
-    "search_url": "https://www.xerox.com/en-us/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/xerox-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "overtech": {
     "search_url": "https://listado.mercadolibre.com.ar/overtech-{mpn}",
     "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "acer": {
-    "search_url": "https://www.acer.com/us-en/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "strategy": "sitemap",
+    "sitemap_url": "https://www.acer.com/sitemap_ares.xml",
+    "url_pattern": "/products/"
   },
   "lexmark": {
-    "search_url": "https://www.lexmark.com/en_us/search.html?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/lexmark-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "fullmark": {
     "search_url": "https://listado.mercadolibre.com.ar/fullmark-{mpn}",
@@ -272,12 +269,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "noblex": {
-    "search_url": "https://noblex.com.ar/catalogsearch/result/?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
-  "xtrike me": {
-    "search_url": "https://xtrike-me.com/index.php?c=search&word={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/noblex-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "moretti": {
     "search_url": "https://moretti.com.ar/?s={mpn}",
@@ -295,17 +288,13 @@
     "search_url": "https://listado.mercadolibre.com.ar/travel-tech-{mpn}",
     "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
-  "exo": {
-    "search_url": "https://tienda.exo.com.ar/catalogsearch/result/?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
   "everlast": {
     "search_url": "https://listado.mercadolibre.com.ar/everlast-{mpn}",
     "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "atma": {
-    "search_url": "https://www.atma.com.ar/catalogsearch/result/?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/atma-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "cx": {
     "search_url": "https://listado.mercadolibre.com.ar/cx-{mpn}",
@@ -316,15 +305,11 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "alcatel": {
-    "search_url": "https://www.alcatelmobile.com/es/?s={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/alcatel-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "blu": {
     "search_url": "https://bluproducts.com/?s={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
-  "maxyou": {
-    "search_url": "https://maxyou.com.ar/?s={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "apple": {
@@ -340,8 +325,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "datalogic": {
-    "search_url": "https://www.datalogic.com/es/search-results-page.html?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/datalogic-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "baseus": {
     "search_url": "https://www.baseus.com/search?q={mpn}",
@@ -352,8 +337,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "foxbox": {
-    "search_url": "https://foxboxgroup.com/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/foxbox-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "head": {
     "search_url": "https://listado.mercadolibre.com.ar/head-{mpn}",
@@ -388,8 +373,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "kretz": {
-    "search_url": "https://www.kretz.com.ar/buscar?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/kretz-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "coolermaster": {
     "search_url": "https://www.coolermaster.com/en-global/search/?q={mpn}",
@@ -401,10 +386,6 @@
   },
   "targus": {
     "search_url": "https://es.targus.com/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
-  },
-  "intellinet": {
-    "search_url": "https://www.intellinetnetwork.com/search?q={mpn}",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "rca": {
@@ -444,12 +425,12 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "jvc": {
-    "search_url": "https://www.jvc.com/es/search/?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/jvc-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "shure": {
-    "search_url": "https://www.shure.com/es-ES/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/shure-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "edifier": {
     "search_url": "https://www.edifier.com/global/search.html?q={mpn}",
@@ -460,8 +441,8 @@
     "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "oki": {
-    "search_url": "https://www.oki.com/es/printing/search.html?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://listado.mercadolibre.com.ar/oki-{mpn}",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
   },
   "tenda": {
     "search_url": "https://www.tendacn.com/es/search/{mpn}.html",
@@ -472,7 +453,7 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "bangho": {
-    "search_url": "https://www.bangho.com.ar/catalogsearch/result/?q={mpn}",
+    "search_url": "https://www.bangho.com.ar/tienda?_q={mpn}&map=ft",
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "zebra": {
@@ -484,8 +465,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "steelseries": {
-    "search_url": "https://steelseries.com/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "search_url": "https://steelseries.com/search-catalog?q={mpn}",
+    "result_selector": ".product-card a"
   },
   "husares": {
     "search_url": "https://listado.mercadolibre.com.ar/husares-{mpn}",
