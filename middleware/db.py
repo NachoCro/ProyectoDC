@@ -118,6 +118,15 @@ def _ensure_schema() -> None:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration 006: active_verified (tracks if product was verified as complete)
+            try:
+                conn.execute(
+                    "ALTER TABLE productos ADD COLUMN active_verified INTEGER NOT NULL DEFAULT 0 "
+                    "CHECK (active_verified IN (0, 1))"
+                )
+            except sqlite3.OperationalError:
+                pass
+
             # ── Config table (app settings) ─────────────────────────────
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS config (

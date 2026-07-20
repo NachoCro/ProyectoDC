@@ -94,6 +94,58 @@ class AdminPrestashopClient(PrestashopClient):
             return data["prestashop"]["product"]
         return data["product"]
 
+    def get_product_completeness(self, product_id: int) -> dict:
+        """Check if a product is complete (has image, description, characteristics).
+
+        Returns a dict with:
+        - ``is_complete``: True if all fields are present
+        - ``missing``: list of missing field names ('image', 'description', 'characteristics')
+        - ``product``: full product data from PrestaShop
+        """
+        product = self.get_product(product_id)
+        missing = []
+
+        # Check image
+        has_image = False
+        associations = product.get("associations", {})
+        images = associations.get("images", [])
+        if images and len(images) > 0:
+            has_image = True
+        if not has_image:
+            missing.append("image")
+
+        # Check description
+        has_description = False
+        description = product.get("description", "")
+        if description:
+            # Handle multi-language: could be string or list of dicts
+            if isinstance(description, str) and description.strip():
+                has_description = True
+            elif isinstance(description, list):
+                for desc in description:
+                    if isinstance(desc, dict) and desc.get("#text", "").strip():
+                        has_description = True
+                        break
+                    elif isinstance(desc, str) and desc.strip():
+                        has_description = True
+                        break
+        if not has_description:
+            missing.append("description")
+
+        # Check characteristics (product_features)
+        has_characteristics = False
+        product_features = associations.get("product_features", [])
+        if product_features and len(product_features) > 0:
+            has_characteristics = True
+        if not has_characteristics:
+            missing.append("characteristics")
+
+        return {
+            "is_complete": len(missing) == 0,
+            "missing": missing,
+            "product": product,
+        }
+
     # ------------------------------------------------------------------
     # write
     # ------------------------------------------------------------------
@@ -321,7 +373,7 @@ class AdminPrestashopClient(PrestashopClient):
         name_el = SubElement(feature_el, "name")
         lang_el = SubElement(name_el, "language")
         lang_el.set("id", LANG_ID)
-        lang_el.text = name
+        lang_el.text = name[:128]  # PrestaShop limit: 128 chars for feature name
         xml_body = ET.tostring(payload, encoding="utf-8", xml_declaration=True)
         resp = self._session.post(
             f"{self._base}/product_features",

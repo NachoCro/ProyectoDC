@@ -100,8 +100,9 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "tcl": {
-    "search_url": "https://www.tcl.com/global/en/search-result?q={mpn}",
-    "result_selector": "a[href*='/p/'], .product-card a, a[class*='product']"
+    "strategy": "sitemap",
+    "sitemap_url": "https://www.tcl.com/ar/es/sitemap.xml",
+    "url_pattern": "/tvs/"
   },
   "amazon": {
     "search_url": "https://www.amazon.com/s?k={mpn}",
@@ -313,7 +314,7 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "apple": {
-    "search_url": "https://support.apple.com/kb/index?page=search&q={mpn}",
+    "search_url": "https://www.apple.com/la/search/%7Bmpn%7D?page=1&sel=support&src=serp&tab=support",
     "result_selector": "a[href*='product'], a[href*='article'], .result-card a, a[class*='product']"
   },
   "western digital": {

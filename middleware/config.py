@@ -12,6 +12,7 @@ DEFAULTS = {
     "DB_PATH": "catalogo.db",
     "BATCH_SIZE": "10",
     "API_SLEEP": "2",
+    "DAEMON_INTERVAL": "300",  # seconds between checks (5 min default)
 }
 
 # ── DB-backed config (overrides .env) ──────────────────────────────────
@@ -79,3 +80,4 @@ PRESTASHOP_API_URL = _get("PRESTASHOP_API_URL").rstrip("/")
 PRESTASHOP_API_KEY = _get("PRESTASHOP_API_KEY")
 BATCH_SIZE = int(_get("BATCH_SIZE"))
 API_SLEEP = int(_get("API_SLEEP"))
+DAEMON_INTERVAL = int(_get("DAEMON_INTERVAL"))

@@ -38,6 +38,13 @@
             Extraer productos
           </button>
         </form>
+
+        <form method="post" action="{{ url_for('check_active') }}" id="checkActiveForm">
+          <button type="submit" class="btn btn--lg"
+                  {% if pipeline_running %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
+            Verificar productos activos
+          </button>
+        </form>
       </div>
     </div>
 
@@ -165,6 +172,39 @@
           else { alert('Error: ' + (data.error || 'Error desconocido')); extractBtn.disabled = false; extractBtn.style.opacity = ''; }
         })
         .catch(function(err) { alert('Error de red: ' + err); extractBtn.disabled = false; extractBtn.style.opacity = ''; });
+    });
+  }
+
+  var checkActiveForm = document.getElementById('checkActiveForm');
+  if (checkActiveForm) {
+    checkActiveForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var checkBtn = checkActiveForm.querySelector('button[type="submit"]');
+      checkBtn.disabled = true;
+      checkBtn.style.opacity = '0.5';
+      isRunning = true;
+      bar.classList.add('play-bar--active');
+      label.textContent = 'Verificando productos activos...';
+      fetch(checkActiveForm.action, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            pollStatus();
+          } else {
+            alert('Error: ' + (data.error || 'Error desconocido'));
+            isRunning = false;
+            resetPlay();
+            checkBtn.disabled = false;
+            checkBtn.style.opacity = '';
+          }
+        })
+        .catch(function(err) {
+          alert('Error de red: ' + err);
+          isRunning = false;
+          resetPlay();
+          checkBtn.disabled = false;
+          checkBtn.style.opacity = '';
+        });
     });
   }
 })();

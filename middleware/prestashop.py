@@ -116,6 +116,42 @@ class PrestashopClient:
             })
         return result
 
+    def get_active_products(
+        self, limit: int = 10, offset: int = 0
+    ) -> list[dict]:
+        """Fetch products with ``active = 1`` (paginated).
+
+        Returns a list of dicts with keys:
+        ``id``, ``ean13``, ``mpn``, ``id_manufacturer``, ``id_category_default``,
+        ``name`` (product name in default language).
+        """
+        root = self._request("products", {
+            "filter[active]": "[1]",
+            "display": "[id,ean13,mpn,id_manufacturer,id_category_default,name]",
+            "limit": f"{offset},{limit}",
+        })
+        products_el = root.find(".//products")
+        if products_el is None:
+            return []
+
+        result: list[dict] = []
+        for p in products_el.findall("product"):
+            name = None
+            name_el = p.find("name")
+            if name_el is not None:
+                lang = name_el.find("language")
+                if lang is not None and lang.text:
+                    name = lang.text.strip()
+            result.append({
+                "id": self._text(p, "id"),
+                "ean13": self._text(p, "ean13"),
+                "mpn": self._text(p, "mpn"),
+                "id_manufacturer": self._text(p, "id_manufacturer"),
+                "id_category_default": self._text(p, "id_category_default"),
+                "name": name,
+            })
+        return result
+
     def get_stock_map(self, product_ids: list[int]) -> dict[int, int]:
         """Return ``{id_product: quantity}`` for the given product IDs."""
         if not product_ids:

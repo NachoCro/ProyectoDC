@@ -210,12 +210,55 @@ def _search_brand_sitemap(
 
 # ── Brand inference from product name ────────────────────────────────────────
 
+# Product-line names that map to a brand key in brands_mapping.json.
+# Used when the product name contains the product line but not the brand itself
+# (e.g. "iphone 15 pro max" → "apple").
+_PRODUCT_LINE_TO_BRAND: dict[str, str] = {
+    "iphone": "apple",
+    "ipad": "apple",
+    "macbook": "apple",
+    "airpods": "apple",
+    "apple tv": "apple",
+    "homepod": "apple",
+    "galaxy": "samsung",
+    "gear": "samsung",
+    "pixel": "google",
+    "nexus": "google",
+    "redmi": "xiaomi",
+    "poco": "xiaomi",
+    "mi ": "xiaomi",
+    "macbook": "apple",
+    "thinkpad": "lenovo",
+    "ideapad": "lenovo",
+    "legion": "lenovo",
+    "surface": "microsoft",
+    "xbox": "microsoft",
+    "playstation": "sony",
+    "wh-": "sony",
+    "wf-": "sony",
+    "mdr-": "sony",
+    "bravia": "sony",
+    "vaio": "vaio",
+    "chromebook": "acer",
+    "predator": "acer",
+    "nitro": "acer",
+    "zenfone": "asus",
+    "rog": "asus",
+    "tuf": "asus",
+    "matebook": "huawei",
+    "nova": "huawei",
+    "echo": "amazon",
+    "kindle": "amazon",
+    "fire tv": "amazon",
+}
+
 
 def _infer_brand_from_name(nombre: str) -> str | None:
     """Infer the product brand from its name by matching against known brands.
 
     Scans the product name (case-insensitive) for any brand key present in
-    ``brands_mapping.json``.  Returns the matched brand key (lowercase) or
+    ``brands_mapping.json``.  If no direct match, checks product-line aliases
+    (e.g. "iphone" → "apple").  Returns the matched brand key (lowercase) or
     ``None`` if no known brand is found.
     """
     if not nombre:
@@ -224,6 +267,9 @@ def _infer_brand_from_name(nombre: str) -> str | None:
     for brand_key in _BRANDS_MAP:
         if brand_key in nombre_lower:
             return brand_key
+    for line, brand in _PRODUCT_LINE_TO_BRAND.items():
+        if line in nombre_lower and brand in _BRANDS_MAP:
+            return brand
     return None
 
 
@@ -338,14 +384,15 @@ def _create_driver() -> webdriver.Chrome:
 # ── Brand site search ────────────────────────────────────────────────────────
 
 
-def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) -> str | None:
-    """Search the brand's official site for a product and return the first result URL.
+def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | None:
+    """Search the brand's official site for a product and return the best result URL.
 
     Uses the full *product_name* as the search query by substituting the
-    ``{mpn}`` placeholder in ``brands_mapping.json`` with the product name.
-    No MPN validation is performed — the search is purely name-based.
+    ``{mpn}`` placeholder in ``brands_mapping.json`` with the cleaned
+    product name.  Evaluates **all** matching results and picks the one
+    that best matches the product name.
 
-    Returns the absolute URL of the first matching product card, or ``None``
+    Returns the absolute URL of the best matching product card, or ``None``
     if the brand has no search config, the search yields no results,
     or Selenium fails.
     """
@@ -374,8 +421,8 @@ def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) ->
     # brand names, and common noise to leave only the model number.
     cleaned_name = _clean_name_for_search(product_name, marca)
     logger.info(
-        "  BRAND_SEARCH  searching %s for cleaned_name=%r (original=%r, MPN=%s)",
-        key, cleaned_name, product_name, mpn,
+        "  BRAND_SEARCH  searching %s for cleaned_name=%r (original=%r)",
+        key, cleaned_name, product_name,
     )
 
     search_url = search_tpl.replace("{mpn}", cleaned_name)
@@ -390,20 +437,137 @@ def _search_brand_site(marca: str, mpn: str, product_name: str, pid: int = 0) ->
         )
         time.sleep(API_SLEEP)
 
-        el = driver.find_element(By.CSS_SELECTOR, selector)
-        href = el.get_attribute("href")
-        if not href:
-            logger.debug("  BRAND_SEARCH  first result has no href for %s %s", key, mpn)
+        # Get ALL matching results and score them
+        elements = driver.find_elements(By.CSS_SELECTOR, selector)
+        if not elements:
+            logger.debug("  BRAND_SEARCH  no results for %s", key)
             return None
 
-        logger.info("  BRAND_SEARCH  found result — returning %s", href)
-        return href
+        best_url = None
+        best_score = -1
+
+        for el in elements:
+            href = el.get_attribute("href")
+            if not href:
+                continue
+
+            # Get the text content of the element for scoring
+            try:
+                text = el.text.lower()
+            except Exception:
+                text = ""
+
+            # Also try to get text from parent/surrounding elements
+            try:
+                parent = el.find_element(By.XPATH, "./..")
+                parent_text = parent.text.lower()
+            except Exception:
+                parent_text = ""
+
+            combined_text = f"{text} {parent_text}"
+
+            # Score based on match with original product name
+            score = _score_search_result(product_name, "", combined_text, href)
+
+            logger.debug(
+                "  BRAND_SEARCH  result score=%.2f url=%s text=%s",
+                score, href, combined_text[:100],
+            )
+
+            if score > best_score:
+                best_score = score
+                best_url = href
+
+        if best_url:
+            logger.info(
+                "  BRAND_SEARCH  best result (score=%.2f) — returning %s",
+                best_score, best_url,
+            )
+        else:
+            logger.debug("  BRAND_SEARCH  no valid results for %s", key)
+
+        return best_url
+
     except Exception as exc:
-        logger.debug("  BRAND_SEARCH  %s %s failed: %s", key, mpn, exc)
+        logger.debug("  BRAND_SEARCH  %s failed: %s", key, exc)
         return None
     finally:
         if driver is not None:
             driver.quit()
+
+
+def _score_search_result(product_name: str, mpn: str, result_text: str, result_url: str) -> float:
+    """Score a search result based on how well it matches the product.
+
+    Higher score = better match. Returns 0.0 to 1.0.
+
+    Considers:
+    - MPN match (highest priority)
+    - Product name words match
+    - Negative signals (accessory words like "toner", "cable", "cartucho")
+    """
+    import re
+
+    score = 0.0
+    product_name_lower = product_name.lower()
+    result_text_lower = result_text.lower()
+    result_url_lower = result_url.lower()
+
+    # Extract model number patterns from product name
+    # Look for patterns like "DCP-1617NW", "HL-L2350DW", "MFC-J4335DW"
+    model_patterns = re.findall(r'[A-Z]{2,4}[-]?\d{3,5}[A-Z]{0,4}', product_name, re.IGNORECASE)
+
+    # Check if any model pattern appears in result text or URL
+    for pattern in model_patterns:
+        pattern_lower = pattern.lower()
+        if pattern_lower in result_text_lower:
+            score += 0.5
+        if pattern_lower in result_url_lower:
+            score += 0.2
+
+    # Check MPN match
+    if mpn:
+        mpn_lower = mpn.lower()
+        if mpn_lower in result_text_lower:
+            score += 0.4
+        if mpn_lower in result_url_lower:
+            score += 0.2
+
+    # Check product name words (at least 2 significant words should match)
+    significant_words = [
+        w for w in product_name_lower.split()
+        if len(w) > 2 and w not in ('impresora', 'monitor', 'smart', 'tv', 'led', 'laser')
+    ]
+    word_matches = sum(1 for w in significant_words if w in result_text_lower)
+    if len(significant_words) > 0:
+        word_ratio = word_matches / len(significant_words)
+        score += word_ratio * 0.3
+
+    # Negative signals — penalize accessories, toners, cables, etc.
+    negative_words = [
+        'toner', 'cartucho', 'cable', 'cableado', 'adaptador', 'base',
+        'soporte', 'repuesto', 'accesorio', 'bateria', 'pila', 'funda',
+        'estuche', 'protector', 'limpieza', 'maintenance', 'kit',
+    ]
+    for neg in negative_words:
+        if neg in result_text_lower:
+            score -= 0.4
+        if neg in result_url_lower:
+            score -= 0.3
+
+    # Positive signals — prefer product pages over category/listing pages
+    positive_url_patterns = ['product', 'model', 'sku', 'item']
+    for pos in positive_url_patterns:
+        if pos in result_url_lower:
+            score += 0.1
+
+    # Penalize category/listing pages
+    category_patterns = ['category', 'catalog', 'list', 'search', 'result', 'shop']
+    for cat in category_patterns:
+        if cat in result_url_lower and 'product' not in result_url_lower:
+            score -= 0.2
+
+    return max(0.0, min(1.0, score))
 
 
 # ── Normalizer ──────────────────────────────────────────────────────────────

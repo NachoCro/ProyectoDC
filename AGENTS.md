@@ -6,7 +6,8 @@ Python middleware: extracts inactive products (active=0, qty>1) from PrestaShop,
 
 | Cmd                                                     | What                                                                         |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `python main.py [-v] [--dry-run]`                       | Extract → enrich (Icecat, translate, embed, score). Always runs both phases. |
+| `python daemon.py [-v] [--interval S] [--dry-run]`      | **Main script** — extract + enrich on startup, then continuous active-product verification loop. |
+| `python pipeline.py [-v] [--dry-run]`                   | One-shot extract → enrich (Icecat, translate, embed, score).                 |
 | `python admin.py [-v] [--host HOST] [--port PORT] [--debug]` | Flask admin UI — dashboard, diff, approve/reject/re-sync, audit log          |
 | `python mock_prestashop.py [--host HOST] [--port PORT]` | Mock PrestaShop REST API (default port 8000)                                 |
 | `python scripts/sync_categories.py`                     | Create PrestaShop categories from local categorias/subcategorias             |

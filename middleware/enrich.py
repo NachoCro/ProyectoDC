@@ -179,7 +179,7 @@ def _fetch_and_prepare(
     if marca and nombre and not dry_run:
         from .official_scraper import _search_brand_site, scrape_from_direct_url
 
-        found_url = _search_brand_site(marca, mpn or "", nombre, pid)
+        found_url = _search_brand_site(marca, nombre, pid)
         if found_url:
             logger.info("  BRAND_SEARCH  id=%d  scraping %s", pid, found_url)
             pipeline_state.add_log(f"Brand site encontrado, scrapeando: {found_url}")
@@ -189,17 +189,40 @@ def _fetch_and_prepare(
                 logger.info("  BRAND_SEARCH  id=%d  succeeded (%d characteristics)", pid, n_chars)
                 pipeline_state.add_log(f"Brand site OK: {n_chars} características extraídas")
 
-    # ── 1. AI agent (web search + extraction, last resort) ────────────────
-    if not product_data and marca and mpn and not dry_run:
+    # ── 1. AI agent (web search + extraction) ─────────────────────────────
+    # Try AI agent if: (a) brand site search failed, or (b) brand site returned
+    # very few characteristics (< 10) — likely a JS-heavy page with limited data.
+    MIN_CHARS_FOR_SUCCESS = 10
+    brand_data_low = (
+        product_data is not None
+        and len(product_data.get("caracteristicas") or []) < MIN_CHARS_FOR_SUCCESS
+    )
+    if (not product_data or brand_data_low) and marca and nombre and not dry_run:
         from .ai_agent import enrich_with_ai
 
         logger.info("  AI_AGENT  id=%d  trying web search + extraction", pid)
         pipeline_state.add_log(f"Buscando con AI agent web search...")
-        product_data = enrich_with_ai(marca, mpn, nombre)
-        if product_data is not None:
-            n_chars = len(product_data.get("caracteristicas") or [])
-            logger.info("  AI_AGENT  id=%d  succeeded (%d characteristics)", pid, n_chars)
-            pipeline_state.add_log(f"AI agent OK: {n_chars} características extraídas")
+        ai_data = enrich_with_ai(marca, nombre)
+        if ai_data is not None:
+            ai_chars = len(ai_data.get("caracteristicas") or [])
+            logger.info("  AI_AGENT  id=%d  succeeded (%d characteristics)", pid, ai_chars)
+            pipeline_state.add_log(f"AI agent OK: {ai_chars} características extraídas")
+            # Keep whichever source has more characteristics
+            if brand_data_low:
+                brand_chars = len(product_data.get("caracteristicas") or [])
+                if ai_chars > brand_chars:
+                    logger.info(
+                        "  AI_AGENT  id=%d  replacing brand site result (%d > %d chars)",
+                        pid, ai_chars, brand_chars,
+                    )
+                    product_data = ai_data
+                else:
+                    logger.info(
+                        "  AI_AGENT  id=%d  keeping brand site result (%d >= %d chars)",
+                        pid, brand_chars, ai_chars,
+                    )
+            else:
+                product_data = ai_data
 
     # ── 2. Name-only search (no brand/MPN, but has a product name) ─────────
     if not product_data and nombre and not dry_run:
@@ -213,7 +236,7 @@ def _fetch_and_prepare(
                 "  NAME_SEARCH  id=%d  inferred brand=%r from name=%r",
                 pid, inferred_brand, nombre,
             )
-            found_url = _search_brand_site(inferred_brand, mpn or "", nombre, pid)
+            found_url = _search_brand_site(inferred_brand, nombre, pid)
             if found_url:
                 logger.info("  NAME_SEARCH  id=%d  scraping %s", pid, found_url)
                 product_data = scrape_from_direct_url(found_url, pid)
@@ -223,6 +246,24 @@ def _fetch_and_prepare(
                         "  NAME_SEARCH  id=%d  succeeded (%d characteristics)",
                         pid, n_chars,
                     )
+
+            # Fallback: AI agent with inferred brand
+            if not product_data:
+                from .ai_agent import enrich_with_ai
+
+                logger.info(
+                    "  NAME_SEARCH  id=%d  brand site failed, trying AI agent with inferred brand=%r",
+                    pid, inferred_brand,
+                )
+                pipeline_state.add_log(f"Brand site no encontrado, buscando con AI agent...")
+                product_data = enrich_with_ai(inferred_brand, nombre)
+                if product_data is not None:
+                    n_chars = len(product_data.get("caracteristicas") or [])
+                    logger.info(
+                        "  NAME_SEARCH  id=%d  AI agent succeeded (%d characteristics)",
+                        pid, n_chars,
+                    )
+                    pipeline_state.add_log(f"AI agent OK: {n_chars} características extraídas")
         else:
             logger.debug(
                 "  NAME_SEARCH  id=%d  no brand could be inferred from %r",
@@ -230,14 +271,14 @@ def _fetch_and_prepare(
             )
 
     if product_data is None:
-        if not (marca and mpn):
-            pipeline_state.add_log(f"Sin datos — sin EAN ni MPN, marcando not_found")
-            logger.info("  SKIP  id=%d  (no EAN, no MPN) — marking not found", pid)
+        if not (marca or nombre):
+            pipeline_state.add_log(f"Sin datos — sin marca ni nombre, marcando not_found")
+            logger.info("  SKIP  id=%d  (no brand, no name) — marking not found", pid)
             if not dry_run:
                 mark_not_found(pid)
         else:
             pipeline_state.add_log(f"Reintentar después — datos insuficientes")
-            logger.warning("  RETRY-LATER  id=%d  (EAN=%s  brand=%s mpn=%s)", pid, ean, marca, mpn)
+            logger.warning("  RETRY-LATER  id=%d  (brand=%s name=%s)", pid, marca, nombre)
         return None, None, ""
 
     translated = translate_product(product_data)

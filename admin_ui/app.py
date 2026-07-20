@@ -350,6 +350,21 @@ def approve(pid: int):
         _audit(conn, pid, actor, accion,
                json.dumps(detalle, ensure_ascii=False))
         conn.commit()
+
+        # Check completeness after activation and auto-complete if needed
+        if activate:
+            try:
+                from middleware.check_active import check_product_completeness, complete_incomplete_product
+                completeness = check_product_completeness(pid)
+                if not completeness["is_complete"]:
+                    logger.info(
+                        "Product %d is incomplete after activation (missing: %s), auto-completing...",
+                        pid, completeness["missing"]
+                    )
+                    complete_incomplete_product(pid, dry_run=False)
+            except Exception as exc:
+                logger.warning("Error checking completeness for product %d: %s", pid, exc)
+
     except Exception:
         conn.rollback()
         raise
@@ -475,12 +490,12 @@ def extract():
 
 
 # ======================================================================
-# Run full pipeline (extract + enrich, same as main.py)
+# Run full pipeline (extract + enrich, same as pipeline.py)
 # ======================================================================
 
 @app.route("/run-pipeline", methods=["POST"])
 def run_pipeline():
-    """Extract inactive products then enrich them — mirrors ``python main.py``."""
+    """Extract inactive products then enrich them — mirrors ``python pipeline.py``."""
     if not _acquire_pipeline_lock():
         return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
 
@@ -547,6 +562,7 @@ _SETTINGS_KEYS = [
     ("PRESTASHOP_API_KEY", "PrestaShop API Key"),
     ("BATCH_SIZE", "Batch Size"),
     ("API_SLEEP", "API Sleep (segundos)"),
+    ("DAEMON_INTERVAL", "Daemon Interval (segundos)"),
 ]
 
 
@@ -649,3 +665,36 @@ def brands_edit():
     }
     _save_brands(data)
     return redirect(url_for("brands", saved=name))
+
+
+# ======================================================================
+# Check active products completeness
+# ======================================================================
+
+@app.route("/check-active", methods=["POST"])
+def check_active():
+    """Check all active products for completeness and auto-complete incomplete ones."""
+    if not _acquire_pipeline_lock():
+        return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
+
+    from middleware.check_active import check_all_active
+    from middleware import pipeline_state
+
+    def _run():
+        try:
+            result = check_all_active(dry_run=False)
+            pipeline_state.add_log(
+                f"Verificación completada: {result['total']} productos, "
+                f"{result['complete']} completos, {result['incomplete']} incompletos, "
+                f"{result['completed']} auto-completados"
+            )
+        except Exception as exc:
+            logger.error("Error checking active products: %s", exc)
+            pipeline_state.add_log(f"ERROR: {exc}")
+        finally:
+            pipeline_state.finish()
+            _release_pipeline_lock()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "redirect": url_for("dashboard")})
