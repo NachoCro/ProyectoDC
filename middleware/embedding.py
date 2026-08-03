@@ -49,10 +49,6 @@ def embedding_to_bytes(embedding: np.ndarray) -> bytes:
     return embedding.tobytes()
 
 
-def embedding_from_bytes(data: bytes) -> np.ndarray:
-    return np.frombuffer(data, dtype=np.float32)
-
-
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 

@@ -127,6 +127,16 @@ def _ensure_schema() -> None:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration 007: pendiente_activar (inactive product verified as complete,
+            # ready to be activated from the admin UI)
+            try:
+                conn.execute(
+                    "ALTER TABLE productos ADD COLUMN pendiente_activar INTEGER NOT NULL DEFAULT 0 "
+                    "CHECK (pendiente_activar IN (0, 1))"
+                )
+            except sqlite3.OperationalError:
+                pass
+
             # ── Config table (app settings) ─────────────────────────────
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS config (
@@ -359,3 +369,52 @@ def get_subcategoria_by_ps_category(conn: sqlite3.Connection, ps_category_id: in
         (ps_category_id,),
     ).fetchone()
     return row["id_subcategoria"] if row else None
+
+
+def ensure_subcategoria(conn: sqlite3.Connection, nombre: str, id_categoria: int = 1) -> int:
+    """Return the id_subcategoria for *nombre*, creating it (in *id_categoria*)
+    if it does not exist.  Used to lazily create ``SIN CLASIFICAR``."""
+    sub_id = get_subcategoria_id(conn, nombre)
+    if sub_id is not None:
+        return sub_id
+    conn.execute(
+        "INSERT OR IGNORE INTO subcategorias (id_categoria, nombre_subcategoria) VALUES (?, ?)",
+        (id_categoria, nombre),
+    )
+    conn.commit()
+    sub_id = get_subcategoria_id(conn, nombre)
+    return sub_id or id_categoria
+
+
+def write_eav(conn: sqlite3.Connection, pid: int, caracteristicas: list[dict]) -> None:
+    """Replace the local EAV rows for a product with *caracteristicas*.
+
+    Creates missing characteristic names in the ``caracteristicas``
+    dictionary on the fly.  (Shared by the pipeline, manual URL scraping,
+    and admin approval paths.)
+    """
+    conn.execute(
+        "DELETE FROM producto_caracteristicas WHERE id_prestashop = ?", (pid,)
+    )
+    for ch in caracteristicas:
+        nombre = (ch.get("nombre") or "").strip()
+        valor = (ch.get("valor") or "").strip()
+        if not nombre or not valor:
+            continue
+        row_c = conn.execute(
+            "SELECT id_caracteristica FROM caracteristicas WHERE nombre_caracteristica = ?",
+            (nombre,),
+        ).fetchone()
+        if row_c:
+            cid = row_c["id_caracteristica"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO caracteristicas (nombre_caracteristica) VALUES (?)",
+                (nombre,),
+            )
+            cid = cur.lastrowid
+        conn.execute(
+            "INSERT OR REPLACE INTO producto_caracteristicas "
+            "(id_prestashop, id_caracteristica, valor) VALUES (?, ?, ?)",
+            (pid, cid, valor),
+        )

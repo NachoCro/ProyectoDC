@@ -5,19 +5,23 @@ Al iniciar ejecuta extracción + enriquecimiento, luego queda verificando
 productos activos periódicamente.
 
 Usage:
-    python daemon.py [-v] [--interval SECONDS] [--dry-run]
+    python daemon.py [-v] [--interval SECONDS] [--dry-run] [--check-inactive]
 
 El intervalo por defecto es DAEMON_INTERVAL de config (300 segundos = 5 min).
+
+Con --check-inactive el daemon además valida productos inactivos con stock
+y los deja como "pendientes para activar" cuando están completos.
 """
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import time
 
 from middleware.config import DAEMON_INTERVAL
-from middleware import pipeline_state
+from middleware import daemon_state
 
 logger = logging.getLogger(__name__)
 
@@ -47,32 +51,35 @@ def _run_initial_pipeline(dry_run: bool) -> None:
     logger.info("=== Fase inicial: Extracción + Enriquecimiento ===")
 
     try:
-        pipeline_state.start(2)
-        pipeline_state.update(1, 0, "Extrayendo productos inactivos...")
-
+        daemon_state.set_phase("extraction")
         pending = run_extraction(dry_run=dry_run)
         logger.info(
             "Extracción finalizada. %d productos pendientes de enriquecimiento.",
             len(pending),
         )
+        daemon_state.log(f"Extracción: {len(pending)} productos pendientes")
     except Exception:
         logger.exception("Error durante la extracción inicial")
+        daemon_state.log("ERROR en extracción inicial")
         return
 
     try:
-        pipeline_state.update(2, 0, "Enriqueciendo productos...")
+        daemon_state.set_phase("enrichment")
         enriched = run_enrich(dry_run=dry_run)
         logger.info("Enriquecimiento finalizado. %d productos procesados.", enriched)
+        daemon_state.log(f"Enriquecimiento: {enriched} productos procesados")
     except Exception:
         logger.exception("Error durante el enriquecimiento inicial")
+        daemon_state.log("ERROR en enriquecimiento inicial")
         return
 
-    pipeline_state.finish()
 
-
-def run_daemon(interval: int, dry_run: bool) -> None:
+def run_daemon(interval: int, dry_run: bool, check_inactive: bool = False) -> None:
     """Run the daemon loop."""
-    from middleware.check_active import check_all_active
+    from middleware.check_active import check_all_active, check_inactive_pending
+
+    daemon_state.start(interval, dry_run, check_inactive)
+    daemon_state.set_pid(os.getpid())
 
     # ---- Fase inicial: extracción + enriquecimiento -------------------------
     _run_initial_pipeline(dry_run=dry_run)
@@ -82,29 +89,37 @@ def run_daemon(interval: int, dry_run: bool) -> None:
         "Daemon started — checking every %d seconds (dry_run=%s)",
         interval, dry_run,
     )
+    daemon_state.log(
+        f"Verificación continua cada {interval}s"
+    )
 
-    cycle = 0
     while _running:
-        cycle += 1
-        logger.info("=== Cycle %d ===", cycle)
+        daemon_state.set_phase("verification")
 
         try:
-            pipeline_state.start(1)
-            pipeline_state.update(1, 0, "Verificando productos activos...")
+            if check_inactive:
+                daemon_state.set_phase("inactive_check")
+                inactive_result = check_inactive_pending(dry_run=dry_run)
+                daemon_state.log(
+                    f"Inactivos: {inactive_result['total']} productos, "
+                    f"{inactive_result['with_stock']} con stock, "
+                    f"{inactive_result['marked']} listos para activar"
+                )
+                logger.info(
+                    "Inactive check: %d total, %d with stock, %d marked for activation, "
+                    "%d auto-completed",
+                    inactive_result["total"],
+                    inactive_result["with_stock"],
+                    inactive_result["marked"],
+                    inactive_result["completed"],
+                )
 
             result = check_all_active(dry_run=dry_run)
-
-            pipeline_state.add_log(
-                f"Verificación completada: {result['total']} productos, "
-                f"{result['complete']} completos, {result['incomplete']} incompletos, "
-                f"{result['completed']} auto-completados"
-            )
-            pipeline_state.finish()
+            daemon_state.cycle_done(result)
 
             logger.info(
-                "Cycle %d complete: %d total, %d complete, %d incomplete, "
+                "Verification: %d total, %d complete, %d incomplete, "
                 "%d auto-completed, %d failed",
-                cycle,
                 result["total"],
                 result["complete"],
                 result["incomplete"],
@@ -113,17 +128,19 @@ def run_daemon(interval: int, dry_run: bool) -> None:
             )
 
         except Exception as exc:
-            logger.error("Error in cycle %d: %s", cycle, exc, exc_info=True)
-            pipeline_state.finish()
+            logger.error("Error during verification: %s", exc, exc_info=True)
+            daemon_state.log(f"ERROR: {exc}")
 
         # Wait for next cycle
         if _running:
+            daemon_state.set_phase("idle")
             logger.info("Waiting %d seconds until next check...", interval)
             for _ in range(interval):
                 if not _running:
                     break
                 time.sleep(1)
 
+    daemon_state.stop()
     logger.info("Daemon stopped")
 
 
@@ -149,6 +166,11 @@ def main() -> None:
         action="store_true",
         help="No escribir en BD ni PrestaShop, solo mostrar lo que se haría",
     )
+    parser.add_argument(
+        "--check-inactive",
+        action="store_true",
+        help="Validar productos inactivos con stock y marcarlos como listos para activar",
+    )
     args = parser.parse_args()
 
     _setup_logging(args.verbose)
@@ -157,7 +179,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    run_daemon(interval=args.interval, dry_run=args.dry_run)
+    run_daemon(interval=args.interval, dry_run=args.dry_run, check_inactive=args.check_inactive)
 
 
 if __name__ == "__main__":

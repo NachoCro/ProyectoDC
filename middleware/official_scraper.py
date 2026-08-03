@@ -13,13 +13,15 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
+
+from . import spec_extractors
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import API_SLEEP
-from .db import get_connection
+from .db import get_connection, write_eav
 
 logger = logging.getLogger(__name__)
 
@@ -165,9 +167,16 @@ def _search_brand_sitemap(
     model_tokens = re.findall(r'[A-Za-z0-9][A-Za-z0-9\-]+', cleaned_name)
     search_terms = " ".join(model_tokens).lower() if model_tokens else cleaned_name.lower()
 
+    # TV/monitor size from product name (e.g. "75\"", "75 pulgadas") — used to
+    # disambiguate size-specific variants that share the same family slug.
+    size_match = re.search(r"(\d{2})\s*(?:\"|''|pulgadas|inches|inch|')(?!\w)", product_name, re.I)
+    wanted_size = size_match.group(1) if size_match else ""
+    # Serial-like token (e.g. "un75u8000fgczb", "55c6k") — strong product-page signal
+    serial_re = re.compile(r"[a-z]{1,4}\d{2}[a-z0-9]{2,}")
+
     logger.info(
-        "  SITEMAP_SEARCH  id=%d  searching %d URLs for %r (cleaned=%r)",
-        pid, len(urls), product_name, search_terms,
+        "  SITEMAP_SEARCH  id=%d  searching %d URLs for %r (cleaned=%r, size=%r)",
+        pid, len(urls), product_name, search_terms, wanted_size,
     )
 
     best_url = None
@@ -190,6 +199,19 @@ def _search_brand_sitemap(
             if token.lower() in slug_norm:
                 score = min(score + 0.15, 1.0)
 
+        # Category/listing pages rarely contain digits — penalise them so the
+        # family/serial product pages win (e.g. "/tvs/crystal-uhd/" vs "/tvs/.../un75u8000fgczb/").
+        if not re.search(r"\d", slug):
+            score -= 0.4
+
+        # Serial-like pattern (e.g. "un75u8000fgczb", "55c6k") → product page
+        if serial_re.search(slug):
+            score = min(score + 0.2, 1.0)
+
+        # Size-specific variants: boost the slug containing the wanted size
+        if wanted_size and re.search(rf"\b{wanted_size}\b", slug_norm):
+            score = min(score + 0.1, 1.0)
+
         if score > best_score:
             best_score = score
             best_url = url
@@ -205,6 +227,350 @@ def _search_brand_sitemap(
         "  SITEMAP_SEARCH  id=%d  no match above threshold %.2f (best=%.2f)",
         pid, threshold, best_score,
     )
+    return None
+
+
+# ── PDF-from-sitemap brand search ────────────────────────────────────────────
+# Some brands (gfast) publish each product's data sheet as a PDF linked from a
+# category/landing page instead of a per-product HTML page.  The sitemap gives
+# the landing pages; each page lists several products — each with a "ficha
+# técnica" PDF whose filename embeds the model — so we collect every spec PDF
+# link and pick the one matching the product name/model.
+
+_PDF_PAGE_CACHE: dict[str, tuple[float, "BeautifulSoup | None", list[dict[str, str]]]] = {}
+_PDF_PAGE_CACHE_TTL_HOURS = 24
+
+
+def _fetch_page(page_url: str) -> tuple["BeautifulSoup | None", list[dict[str, str]]]:
+    """Fetch a category/landing page and return ``(soup, spec-PDF links)``.
+
+    Pages are cached in memory for ``_PDF_PAGE_CACHE_TTL_HOURS`` to avoid
+    re-fetching the same landing page for every product of the brand.
+    """
+    now = time.time()
+    cached = _PDF_PAGE_CACHE.get(page_url)
+    if cached and now - cached[0] < _PDF_PAGE_CACHE_TTL_HOURS * 3600:
+        return cached[1], cached[2]
+
+    soup: "BeautifulSoup | None" = None
+    links: list[dict[str, str]] = []
+    try:
+        time.sleep(API_SLEEP)  # throttle external requests
+        resp = _SESSION.get(page_url, timeout=30)
+        resp.raise_for_status()
+        from .pdf_scraper import find_spec_pdf_links
+        soup = BeautifulSoup(resp.text, "lxml")
+        links = find_spec_pdf_links(soup, page_url)
+        logger.info("  PDF_SITEMAP  %s → %d spec PDF links", page_url, len(links))
+    except Exception as exc:
+        logger.warning("  PDF_SITEMAP  page fetch failed %s: %s", page_url, exc)
+
+    _PDF_PAGE_CACHE[page_url] = (now, soup, links)
+    return soup, links
+
+
+def _fetch_page_pdf_links(page_url: str) -> list[dict[str, str]]:
+    """Fetch a category/landing page and return its spec-sheet PDF links."""
+    _, links = _fetch_page(page_url)
+    return links
+
+
+def _pages_for_pdf(pdf_url: str) -> list[str]:
+    """Return cached page URLs that link to *pdf_url* (matched by filename)."""
+    fname = pdf_url.lower().split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    now = time.time()
+    pages: list[str] = []
+    for page_url, (ts, _soup, links) in _PDF_PAGE_CACHE.items():
+        if now - ts >= _PDF_PAGE_CACHE_TTL_HOURS * 3600:
+            continue
+        if any(
+            link["url"].lower().split("?")[0].rstrip("/").rsplit("/", 1)[-1] == fname
+            for link in links
+        ):
+            pages.append(page_url)
+    return pages
+
+
+def _extract_inline_specs_from_soup(soup: "BeautifulSoup | None", pdf_url: str) -> list[dict[str, str]]:
+    """Extract "Key: Value" spec lines from the product block linking to a PDF.
+
+    gfast category pages list each product inline (Elementor): a heading, a
+    text-editor with ``Key: Value`` lines (``<br>`` separated) and a button
+    linking to the product's data-sheet PDF.  Used as a fallback when the PDF
+    is image-based and yields no extractable text.
+    """
+    if soup is None:
+        return []
+
+    fname = pdf_url.lower().split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    anchor = None
+    for cand in soup.find_all("a", href=True):
+        href = (cand.get("href") or "").lower()
+        if href.endswith(fname):
+            anchor = cand
+            break
+
+    if anchor is None:
+        return []
+
+    node = anchor
+    for _ in range(12):
+        parent = node.parent
+        if parent is None or parent.name in ("body", "html"):
+            break
+        specs: list[dict[str, str]] = []
+        for p in parent.find_all("p"):
+            if anchor in p.find_all("a"):
+                continue
+            text = p.get_text(separator="\n", strip=True)
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+                name, _, value = line.partition(":")
+                name, value = name.strip(), value.strip()
+                if not name or not value or len(name) > 60 or len(value) > 200:
+                    continue
+                if name.lower() in ("especificaciones", "specifications", "caracteristicas"):
+                    continue
+                specs.append({"nombre": name, "valor": value})
+        if len(specs) >= 2:
+            return specs
+        node = parent
+    return []
+
+
+def _extract_pdf_model_tokens(product_name: str, marca: str = "") -> set[str]:
+    """Model-ish tokens (letter + digit, hyphens kept) from a product name.
+
+    gfast-style models embed hyphens (``T-195``, ``N-536R``, ``H-500``) that
+    ``_extract_model_from_name`` strips, so PDF matching extracts its own
+    tokens.  Returns normalized tokens (hyphens removed) of length ≥ 3,
+    e.g. ``"Monitor Gfast T-195 19.5 LED"`` → ``{"t195"}``.
+    """
+    import re
+    import unicodedata
+
+    def _norm(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s.lower())
+        return "".join(c for c in s if not unicodedata.combining(c))
+
+    cleaned = _norm(product_name)
+    if marca:
+        cleaned = re.sub(re.escape(_norm(marca)), "", cleaned)
+    for w in _NOISE_WORDS:
+        cleaned = re.sub(rf"\b{re.escape(w)}\b", "", cleaned)
+    # Drop bare decimal sizes (19.5, 15.6) — not model identifiers
+    cleaned = re.sub(r"\d+\.\d+", " ", cleaned)
+
+    tokens = set()
+    for tok in re.findall(r"[a-z]+\-?\d+[a-z0-9\-]*", cleaned):
+        norm_tok = re.sub(r"[^a-z0-9]", "", tok)
+        if len(norm_tok) >= 3:
+            tokens.add(norm_tok)
+    return tokens
+
+
+def _score_pdf_url(pdf_url: str, product_name: str, marca: str) -> float:
+    """Score a spec-sheet PDF URL against a product name.
+
+    PDF filenames typically embed the model (e.g. ``Ficha-Tecnica-Gfast-N-536R.pdf``
+    vs ``Notebook Gfast N-536R``).  Combines a model-token bonus, token
+    overlap, and a fuzzy ratio on the normalized slugs.
+    """
+    import re
+    import unicodedata
+    from difflib import SequenceMatcher
+
+    def _norm(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s.lower())
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return re.sub(r"[^a-z0-9]", "", s)
+
+    fname = pdf_url.split("?")[0].rstrip("/")
+    fname = fname.rsplit("/", 1)[-1]
+    if fname.lower().endswith(".pdf"):
+        fname = fname[:-4]
+    fname_norm = _norm(fname)
+    if not fname_norm:
+        return 0.0
+
+    name_norm = _norm(product_name)
+
+    score = 0.0
+
+    # Strongest signal: the product's model token appears in the filename
+    for tok in _extract_pdf_model_tokens(product_name, marca):
+        if tok in fname_norm:
+            score += 6.0
+
+    # Secondary: general token overlap on the raw name
+    tokens = {t for t in re.findall(r"[a-z0-9]{3,}", name_norm)}
+    score += sum(1 for t in tokens if t in fname_norm) * 1.5
+
+    score += SequenceMatcher(None, name_norm, fname_norm).ratio() * 10.0
+    return score
+
+
+def _search_brand_pdf_sitemap(
+    sitemap_url: str,
+    product_name: str,
+    marca: str,
+    pid: int = 0,
+) -> str | None:
+    """Search a brand sitemap whose product pages embed PDF data sheets.
+
+    Walks every sitemap URL, collects the spec-sheet PDF links found on each
+    page (cached), and returns the PDF whose filename best matches the product
+    name/model.  Returns the best PDF URL if it beats the acceptance
+    threshold, else ``None``.
+    """
+    pages = _fetch_sitemap_urls(sitemap_url)
+    if not pages:
+        logger.debug("  PDF_SITEMAP  no sitemap URLs for %s", sitemap_url)
+        return None
+
+    logger.info(
+        "  PDF_SITEMAP  id=%d  scanning %d pages for %r",
+        pid, len(pages), product_name,
+    )
+
+    best_url: str | None = None
+    best_score = 0.0
+    for page in pages:
+        pdf_links = _fetch_page_pdf_links(page)
+        for link in pdf_links:
+            score = _score_pdf_url(link["url"], product_name, marca)
+            logger.debug(
+                "  PDF_SITEMAP  id=%d  score=%.1f  %s",
+                pid, score, link["url"],
+            )
+            if score > best_score:
+                best_score = score
+                best_url = link["url"]
+
+    if best_url and best_score >= 9.0:
+        logger.info(
+            "  PDF_SITEMAP  id=%d  best match score=%.1f → %s",
+            pid, best_score, best_url,
+        )
+        return best_url
+
+    logger.debug(
+        "  PDF_SITEMAP  id=%d  no PDF match above threshold (best=%.1f)",
+        pid, best_score,
+    )
+    return None
+
+
+# ── PDF-sitemap auto-discovery ───────────────────────────────────────────────
+# Some sites (gfast) publish each product's data sheet as a PDF linked from a
+# category/landing page, with no per-product pages and no brands_mapping.json
+# entry.  When a brand has no mapping, we *discover* the source: probe
+# candidate official domains + common sitemap paths and detect the "category
+# pages full of spec-sheet PDF links" pattern.  Results are cached per brand
+# key for the process lifetime, so the probe cost is paid once per brand — not
+# once per product.  Page fetches run through the shared 24h _fetch_page cache
+# and the API_SLEEP throttle.
+
+_PDF_SITEMAP_DISCOVERY: dict[str, str | None] = {}
+_PDF_SITEMAP_DISCOVERY_MAX = 64
+
+# Candidate official domains for an unmapped brand, tried in order.
+_PDF_SITEMAP_DOMAIN_TEMPLATES = (
+    "{brand}.com.ar",
+    "{brand}.com",
+    "www.{brand}.com",
+    "{brand}.net",
+    "{brand}.com.uy",
+)
+
+# Common sitemap paths (WordPress core + Yoast/RankMath-style indices), tried
+# per domain until one yields the PDF-spec pattern.
+_PDF_SITEMAP_PATH_CANDIDATES = (
+    "/wp-sitemap-posts-page-1.xml",
+    "/wp-sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap.xml",
+    "/sitemap-1.xml",
+    "/page-sitemap.xml",
+)
+
+# Pattern-detection thresholds over a sample of sitemap pages.
+_PDF_SITEMAP_DETECT_SAMPLE = 8
+_PDF_SITEMAP_DETECT_MIN_TOTAL = 3
+_PDF_SITEMAP_DETECT_MIN_MULTI = 1
+
+
+def _detect_pdf_spec_site(page_urls: list[str]) -> bool:
+    """Return True if the sampled pages look like a PDF-spec listing site.
+
+    Fetches up to ``_PDF_SITEMAP_DETECT_SAMPLE`` pages (shared 24h cache) and
+    counts the spec-sheet PDF links.  Accepts the pattern when the sample has at
+    least ``_PDF_SITEMAP_DETECT_MIN_TOTAL`` PDF links and at least one page
+    lists several of them (a category/listing page).
+    """
+    total = 0
+    multi_pages = 0
+    for page in page_urls[:_PDF_SITEMAP_DETECT_SAMPLE]:
+        links = _fetch_page_pdf_links(page)
+        total += len(links)
+        if len(links) >= 2:
+            multi_pages += 1
+    return total >= _PDF_SITEMAP_DETECT_MIN_TOTAL and multi_pages >= _PDF_SITEMAP_DETECT_MIN_MULTI
+
+
+def _cache_pdf_sitemap_discovery(key: str, sitemap_url: str | None) -> None:
+    if len(_PDF_SITEMAP_DISCOVERY) >= _PDF_SITEMAP_DISCOVERY_MAX:
+        _PDF_SITEMAP_DISCOVERY.clear()
+    _PDF_SITEMAP_DISCOVERY[key] = sitemap_url
+
+
+def _discover_brand_pdf_sitemap(
+    marca: str,
+    product_name: str,
+    pid: int = 0,
+) -> str | None:
+    """Discover a gfast-style PDF-sitemap source for an unmapped brand.
+
+    Probes candidate domains and common sitemap paths; the first sitemap whose
+    pages show the PDF-spec pattern wins.  The outcome is cached per brand key,
+    so later products of the same brand skip straight to
+    ``_search_brand_pdf_sitemap`` (or straight to ``None`` when no source was
+    found).
+    """
+    import re
+
+    key = marca.strip().lower()
+    if key in _PDF_SITEMAP_DISCOVERY:
+        sitemap_url = _PDF_SITEMAP_DISCOVERY[key]
+        if sitemap_url:
+            return _search_brand_pdf_sitemap(sitemap_url, product_name, marca, pid)
+        return None
+
+    slug = re.sub(r"[^a-z0-9]", "", key)
+    if not slug:
+        _cache_pdf_sitemap_discovery(key, None)
+        return None
+
+    for tpl in _PDF_SITEMAP_DOMAIN_TEMPLATES:
+        domain = tpl.format(brand=slug)
+        for path in _PDF_SITEMAP_PATH_CANDIDATES:
+            sitemap_url = f"https://{domain}{path}"
+            pages = _fetch_sitemap_urls(sitemap_url, cache_ttl_hours=0)
+            if not pages:
+                continue
+            logger.info(
+                "  PDF_DISCOVERY  %s → %d pages, checking PDF-spec pattern",
+                sitemap_url, len(pages),
+            )
+            if _detect_pdf_spec_site(pages):
+                _cache_pdf_sitemap_discovery(key, sitemap_url)
+                logger.info("  PDF_DISCOVERY  %s is a PDF-spec source", sitemap_url)
+                return _search_brand_pdf_sitemap(sitemap_url, product_name, marca, pid)
+
+    _cache_pdf_sitemap_discovery(key, None)
+    logger.info("  PDF_DISCOVERY  no PDF-sitemap source found for %r", key)
     return None
 
 
@@ -250,6 +616,12 @@ _PRODUCT_LINE_TO_BRAND: dict[str, str] = {
     "echo": "amazon",
     "kindle": "amazon",
     "fire tv": "amazon",
+    "dcp-": "brother",
+    "dcp": "brother",
+    "mfc-": "brother",
+    "mfc": "brother",
+    "hl-": "brother",
+    "hl": "brother",
 }
 
 
@@ -263,14 +635,64 @@ def _infer_brand_from_name(nombre: str) -> str | None:
     """
     if not nombre:
         return None
+    import re
     nombre_lower = nombre.lower()
+    # Use word boundaries to avoid false matches (e.g. "blu" matching "bluetooth")
     for brand_key in _BRANDS_MAP:
-        if brand_key in nombre_lower:
+        pattern = r'\b' + re.escape(brand_key) + r'\b'
+        if re.search(pattern, nombre_lower):
             return brand_key
     for line, brand in _PRODUCT_LINE_TO_BRAND.items():
-        if line in nombre_lower and brand in _BRANDS_MAP:
+        pattern = r'\b' + re.escape(line) + r'\b'
+        if re.search(pattern, nombre_lower) and brand in _BRANDS_MAP:
             return brand
     return None
+
+
+def _extract_model_from_name(text: str, marca: str = "") -> str:
+    """Extract the model number from a product title or name.
+
+    Removes the brand name and common descriptors, leaving the alphanumeric
+    model identifier (e.g. "DCP1617NW", "OLED55C4PSA", "BM5100FDW").
+
+    Examples:
+        "DCP1617NW | Impresora láser monocromática | Brother Argentina" → "DCP1617NW"
+        "BROTHER DCP1617NW" → "DCP1617NW"
+        "LG OLED55C4PSA 55\" 4K Smart TV" → "OLED55C4PSA"
+    """
+    if not text:
+        return ""
+
+    import re
+
+    cleaned = text
+
+    # Remove brand name if provided
+    if marca:
+        cleaned = re.sub(re.escape(marca), "", cleaned, flags=re.IGNORECASE)
+
+    # Remove common descriptors / noise (same as _clean_name_for_search)
+    for word in _NOISE_WORDS:
+        cleaned = re.sub(rf"\b{re.escape(word)}\b", "", cleaned, flags=re.IGNORECASE)
+
+    # Remove separators and extra punctuation
+    cleaned = re.sub(r"[|/\\:;,\-–—(){}\[\]\"'«»]", " ", cleaned)
+
+    # Remove size patterns like 55", 32", 27"
+    cleaned = re.sub(r'\d+["\u201d\u2019\u2018]', "", cleaned)
+
+    # Extract the most likely model token: alphanumeric sequences with at least
+    # one letter and one digit (e.g. DCP1617NW, OLED55C4PSA, BM5100FDW, M50F)
+    candidates = re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", cleaned)
+    if candidates:
+        # Prefer candidates containing digits (model numbers like DCP1617NW, M404dn)
+        with_digits = [c for c in candidates if any(d.isdigit() for d in c)]
+        pool = with_digits if with_digits else candidates
+        # Pick the longest candidate
+        best = max(pool, key=len)
+        return best.strip()
+
+    return ""
 
 
 # ── Name cleanup for search ─────────────────────────────────────────────────
@@ -284,6 +706,10 @@ _NOISE_WORDS = {
     "impresora", "imp", "monitor", "televisor", "tv", "audifonos", "audífonos",
     "parlante", "bocina", "cargador", "cable", "adaptador", "mouse", "teclado",
     "disco", "memoria", "ram", "procesador", "tarjeta", "fuente",
+    # Common abbreviations
+    "note", "notebook", "nb", "laptop", "portatil", "portátil",
+    "parl", "boc", "carg", "adapt", "aud", "proc", "mem",
+    "mon", "pant", "display", "pantalla",
     # English product types
     "printer", "monitor", "speaker", "charger", "cable", "adapter",
     "keyboard", "mouse", "drive", "memory", "card",
@@ -374,11 +800,21 @@ def _create_driver() -> webdriver.Chrome:
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
+    # Block images/fonts to speed up heavy brand pages (Samsung can exceed
+    # 60s under full load, timing out the renderer).
+    opts.add_argument("--blink-settings=imagesEnabled=false")
+    opts.add_argument("--disable-features=PreloadMediaEngagement,MediaEngagementBatching")
+    opts.add_experimental_option("prefs", {
+        "profile.managed_default_content_settings.images": 2,
+        "disk-cache-size": 4096,
+    })
     opts.add_argument(
         "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
-    return webdriver.Chrome(options=opts)
+    driver = webdriver.Chrome(options=opts)
+    driver.set_page_load_timeout(90)
+    return driver
 
 
 # ── Brand site search ────────────────────────────────────────────────────────
@@ -399,7 +835,9 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
     key = marca.strip().lower()
     entry = _BRANDS_MAP.get(key)
     if not entry:
-        return None
+        # Unmapped brand → try auto-discovery of a gfast-style PDF-sitemap
+        # source (sites whose data sheets are PDFs linked from category pages).
+        return _discover_brand_pdf_sitemap(marca, product_name, pid)
 
     # ── Sitemap strategy ─────────────────────────────────────────────────
     if entry.get("strategy") == "sitemap":
@@ -408,6 +846,15 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
         if sitemap_url:
             return _search_brand_sitemap(
                 sitemap_url, url_pattern, product_name, marca, pid,
+            )
+        return None
+
+    # ── PDF-sitemap strategy (category pages with inline PDF data sheets) ─
+    if entry.get("strategy") == "pdf_sitemap":
+        sitemap_url = entry.get("sitemap_url", "")
+        if sitemap_url:
+            return _search_brand_pdf_sitemap(
+                sitemap_url, product_name, marca, pid,
             )
         return None
 
@@ -437,11 +884,49 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
         )
         time.sleep(API_SLEEP)
 
-        # Get ALL matching results and score them
+        # Get ALL matching results — pick the one whose title shares the
+        # most words with the product name.
         elements = driver.find_elements(By.CSS_SELECTOR, selector)
         if not elements:
             logger.debug("  BRAND_SEARCH  no results for %s", key)
             return None
+
+        import re as _re
+        import unicodedata as _ud
+
+        def _strip_acc(s: str) -> str:
+            return "".join(
+                c for c in _ud.normalize("NFKD", s)
+                if not _ud.combining(c)
+            )
+
+        cleaned = _clean_name_for_search(product_name, marca)
+        # Build search words from the FULL product name (not just cleaned)
+        # so we get more differentiating tokens: brother, dcp, 1617nw …
+        _GENERIC = frozenset({
+            "de", "del", "la", "el", "un", "una", "los", "las", "para", "con",
+            "impresora", "monitor", "televisor", "smart", "tv", "led", "lcd",
+            "laser", "inkjet", "mf", "mfp", "multifuncion", "multifuncional",
+            "printer",
+        })
+        search_words = {
+            w for w in _strip_acc(product_name).lower().split()
+            if len(w) > 1 and w not in _GENERIC
+        }
+        # Also include the full cleaned model as one token  e.g. "dcp-1617nw"
+        raw_token = _strip_acc(cleaned).lower().replace(" ", "")
+        if len(raw_token) > 2:
+            search_words.add(raw_token)
+
+        # Model slug for URL matching (e.g. "dcp1617nw")
+        model_slug = _strip_acc(cleaned).lower().replace(" ", "").replace("-", "")
+
+        # Accessory keywords — penalize results that are clearly not the product
+        _ACCESSORY_WORDS = frozenset({
+            "toner", "cartucho", "cable", "cargador", "bateria", "batería",
+            "funda", "estuche", "soporte", "adapter", "adaptador", "kit",
+            "tinta", "drum", "recambio", "accesorio", "replacement",
+        })
 
         best_url = None
         best_score = -1
@@ -451,40 +936,64 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
             if not href:
                 continue
 
-            # Get the text content of the element for scoring
             try:
-                text = el.text.lower()
+                title = _strip_acc(el.text.lower())
             except Exception:
-                text = ""
+                continue
+            if not title:
+                continue
 
-            # Also try to get text from parent/surrounding elements
-            try:
-                parent = el.find_element(By.XPATH, "./..")
-                parent_text = parent.text.lower()
-            except Exception:
-                parent_text = ""
+            # --- Score calculation ---
+            matches = sum(1 for w in search_words if w in title)
 
-            combined_text = f"{text} {parent_text}"
+            # Bonus: model slug appears in the URL (strongest signal)
+            url_slug = href.lower().replace("-", "").replace("/", " ")
+            url_has_model = model_slug in url_slug or model_slug in href.lower().replace("-", "")
+            url_bonus = 20 if url_has_model else 0
 
-            # Score based on match with original product name
-            score = _score_search_result(product_name, "", combined_text, href)
+            # Bonus: title starts with the model number
+            first_word = title.split()[0] if title.split() else ""
+            first_match = first_word in search_words
+            first_bonus = 10 if first_match else 0
+
+            # Penalty: accessory keywords in title
+            accessory_penalty = sum(
+                5 for aw in _ACCESSORY_WORDS if aw in title
+            )
+
+            score = matches + url_bonus + first_bonus - accessory_penalty
 
             logger.debug(
-                "  BRAND_SEARCH  result score=%.2f url=%s text=%s",
-                score, href, combined_text[:100],
+                "  BRAND_SEARCH  title=%r  score=%d (matches=%d url=%d first=%d -accessory=%d)  url=%s",
+                el.text.strip(), score, matches, url_bonus, first_bonus,
+                accessory_penalty, href,
             )
 
             if score > best_score:
                 best_score = score
                 best_url = href
 
-        if best_url:
+        if best_url and best_score > 0:
             logger.info(
-                "  BRAND_SEARCH  best result (score=%.2f) — returning %s",
+                "  BRAND_SEARCH  best match (score=%d) — %s",
                 best_score, best_url,
             )
         else:
-            logger.debug("  BRAND_SEARCH  no valid results for %s", key)
+            logger.debug("  BRAND_SEARCH  no matching titles for %s", key)
+            best_url = None
+
+        # Direct URL fallback — try constructed product URL from brands_mapping
+        if not best_url:
+            direct_pattern = entry.get("direct_url_pattern", "")
+            if direct_pattern:
+                import re as _re
+                slug = _re.sub(r'[^a-z0-9]', '', cleaned.lower())
+                if slug:
+                    direct_url = direct_pattern.replace("{model_slug}", slug)
+                    logger.info(
+                        "  BRAND_SEARCH  id=%d  trying direct URL fallback: %s", pid, direct_url,
+                    )
+                    best_url = direct_url
 
         return best_url
 
@@ -496,177 +1005,7 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
             driver.quit()
 
 
-def _score_search_result(product_name: str, mpn: str, result_text: str, result_url: str) -> float:
-    """Score a search result based on how well it matches the product.
-
-    Higher score = better match. Returns 0.0 to 1.0.
-
-    Considers:
-    - MPN match (highest priority)
-    - Product name words match
-    - Negative signals (accessory words like "toner", "cable", "cartucho")
-    """
-    import re
-
-    score = 0.0
-    product_name_lower = product_name.lower()
-    result_text_lower = result_text.lower()
-    result_url_lower = result_url.lower()
-
-    # Extract model number patterns from product name
-    # Look for patterns like "DCP-1617NW", "HL-L2350DW", "MFC-J4335DW"
-    model_patterns = re.findall(r'[A-Z]{2,4}[-]?\d{3,5}[A-Z]{0,4}', product_name, re.IGNORECASE)
-
-    # Check if any model pattern appears in result text or URL
-    for pattern in model_patterns:
-        pattern_lower = pattern.lower()
-        if pattern_lower in result_text_lower:
-            score += 0.5
-        if pattern_lower in result_url_lower:
-            score += 0.2
-
-    # Check MPN match
-    if mpn:
-        mpn_lower = mpn.lower()
-        if mpn_lower in result_text_lower:
-            score += 0.4
-        if mpn_lower in result_url_lower:
-            score += 0.2
-
-    # Check product name words (at least 2 significant words should match)
-    significant_words = [
-        w for w in product_name_lower.split()
-        if len(w) > 2 and w not in ('impresora', 'monitor', 'smart', 'tv', 'led', 'laser')
-    ]
-    word_matches = sum(1 for w in significant_words if w in result_text_lower)
-    if len(significant_words) > 0:
-        word_ratio = word_matches / len(significant_words)
-        score += word_ratio * 0.3
-
-    # Negative signals — penalize accessories, toners, cables, etc.
-    negative_words = [
-        'toner', 'cartucho', 'cable', 'cableado', 'adaptador', 'base',
-        'soporte', 'repuesto', 'accesorio', 'bateria', 'pila', 'funda',
-        'estuche', 'protector', 'limpieza', 'maintenance', 'kit',
-    ]
-    for neg in negative_words:
-        if neg in result_text_lower:
-            score -= 0.4
-        if neg in result_url_lower:
-            score -= 0.3
-
-    # Positive signals — prefer product pages over category/listing pages
-    positive_url_patterns = ['product', 'model', 'sku', 'item']
-    for pos in positive_url_patterns:
-        if pos in result_url_lower:
-            score += 0.1
-
-    # Penalize category/listing pages
-    category_patterns = ['category', 'catalog', 'list', 'search', 'result', 'shop']
-    for cat in category_patterns:
-        if cat in result_url_lower and 'product' not in result_url_lower:
-            score -= 0.2
-
-    return max(0.0, min(1.0, score))
-
-
-# ── Normalizer ──────────────────────────────────────────────────────────────
-
-
-def _build_result(
-    title: str = "",
-    descripcion: str = "",
-    marca: str = "",
-    modelo: str = "",
-    caracteristicas: list | None = None,
-    imagen_url: str = "",
-) -> dict:
-    """Return a normalized product data dict."""
-    return {
-        "title": title,
-        "descripcion": descripcion,
-        "descripcion_corta": "",
-        "marca": marca,
-        "modelo": modelo,
-        "resumen": "",
-        "caracteristicas": caracteristicas or [],
-        "imagen_url": imagen_url,
-        "_source": "official_scraper",
-    }
-
-
 # ── Parsers ─────────────────────────────────────────────────────────────────
-
-
-def _extract_json_ld(soup: BeautifulSoup) -> dict | None:
-    """Extract product data from ``application/ld+json`` blocks.
-
-    Looks for ``@type: Product`` and returns the normalized shape.
-    """
-    for script in soup.find_all("script", type="application/ld+json"):
-        raw = script.string
-        if not raw:
-            continue
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        items = parsed if isinstance(parsed, list) else [parsed]
-        for item in items:
-            if item.get("@type") not in ("Product", "product"):
-                continue
-            name = item.get("name", "")
-            desc = item.get("description", "")
-            img = ""
-            raw_img = item.get("image")
-            if isinstance(raw_img, list):
-                first = raw_img[0]
-                img = first.get("url", first) if isinstance(first, dict) else first
-            elif isinstance(raw_img, dict):
-                img = raw_img.get("url", "")
-            elif isinstance(raw_img, str):
-                img = raw_img
-            brand = ""
-            raw_brand = item.get("brand")
-            if isinstance(raw_brand, dict):
-                brand = raw_brand.get("name", "")
-            elif isinstance(raw_brand, str):
-                brand = raw_brand
-            modelo = item.get("mpn") or item.get("sku") or ""
-            features: list[dict[str, str]] = []
-            for prop in item.get("additionalProperty") or []:
-                n = (prop.get("name") or "").strip()
-                v = (prop.get("value") or "").strip()
-                if n and v:
-                    features.append({"nombre": n, "valor": v})
-            return _build_result(
-                title=name, descripcion=desc, marca=brand,
-                modelo=modelo, caracteristicas=features, imagen_url=img,
-            )
-    return None
-
-
-def _extract_meta(soup: BeautifulSoup) -> dict | None:
-    """Extract title, description, and image from OG / meta tags."""
-    og = {}
-    for attr in ("property", "name"):
-        for key, field in [("og:title", "title"), ("og:description", "desc"),
-                           ("description", "desc"), ("og:image", "img")]:
-            tag = soup.find("meta", attrs={attr: key})
-            if tag and tag.get("content") and field not in og:
-                og[field] = tag["content"].strip()
-    title = og.get("title", "")
-    if not title:
-        t = soup.find("title")
-        if t:
-            title = t.get_text(strip=True)
-    if not title:
-        return None
-    return _build_result(
-        title=title,
-        descripcion=og.get("desc", ""),
-        imagen_url=og.get("img", ""),
-    )
 
 
 def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
@@ -749,44 +1088,169 @@ def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
     return ""
 
 
-def _extract_tables(soup: BeautifulSoup) -> list[dict[str, str]]:
-    """Extract key-value pairs from HTML ``<table>`` technical spec blocks.
+def _extract_images(soup: BeautifulSoup, current_url: str = "", max_images: int = 4) -> list[str]:
+    """Extract multiple product image URLs from the page.
 
-    Walks every ``<tr>`` with exactly two ``<td>``/``<th>`` cells and treats
-    the first cell as the characteristic name and the second as the value.
-    Filters out rows where either cell is empty or very short (< 2 chars).
+    Tries multiple strategies in order:
+    1. JSON-LD images (all from @type: Product)
+    2. OG image meta tag
+    3. <img> tags with product-related classes/ids/alt text
+    4. <img> in main content area with reasonable size
+
+    Returns up to max_images unique URLs, sorted by relevance.
     """
-    features: list[dict[str, str]] = []
-    seen: set[str] = set()
+    from urllib.parse import urljoin
 
-    for table in soup.find_all("table"):
-        for tr in table.find_all("tr"):
-            cells = tr.find_all(["td", "th"])
-            if len(cells) != 2:
+    def _normalize_url(url: str) -> str:
+        """Normalize relative URLs to absolute using current_url as base."""
+        if not url or url.startswith("data:"):
+            return url
+        if url.startswith("//"):
+            return "https:" + url
+        if url.startswith("/") and current_url:
+            return urljoin(current_url, url)
+        return url
+
+    def _is_valid_image(url: str) -> bool:
+        """Check if URL is a valid product image (not icon/logo/spacer)."""
+        if not url or url.startswith("data:"):
+            return False
+        lower = url.lower()
+        if any(skip in lower for skip in ("icon", "logo", "avatar", "pixel", "spacer", "blank", "favicon")):
+            return False
+        return True
+
+    seen_srcs: set[str] = set()
+    result_images: list[str] = []
+
+    def _add_image(url: str) -> bool:
+        """Add image URL if valid and not duplicate. Returns True if added."""
+        normalized = _normalize_url(url)
+        if not normalized or normalized in seen_srcs or not _is_valid_image(normalized):
+            return False
+        seen_srcs.add(normalized)
+        result_images.append(normalized)
+        return len(result_images) < max_images
+
+    # Strategy 1: JSON-LD images (all from @type: Product)
+    for script in soup.find_all("script", type="application/ld+json"):
+        raw = script.string
+        if not raw:
+            continue
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for item in items:
+            if item.get("@type") not in ("Product", "product"):
                 continue
-            name = cells[0].get_text(strip=True)
-            value = cells[1].get_text(strip=True)
-            if not name or not value or len(name) < 2 or len(value) < 2:
+            raw_img = item.get("image")
+            if isinstance(raw_img, list):
+                for img_item in raw_img:
+                    if isinstance(img_item, dict):
+                        _add_image(img_item.get("url", ""))
+                    elif isinstance(img_item, str):
+                        _add_image(img_item)
+            elif isinstance(raw_img, dict):
+                _add_image(raw_img.get("url", ""))
+            elif isinstance(raw_img, str):
+                _add_image(raw_img)
+            if len(result_images) >= max_images:
+                return result_images
+
+    # Strategy 2: OG image meta tag
+    for attr in ("property", "name"):
+        tag = soup.find("meta", attrs={attr: "og:image"})
+        if tag and tag.get("content"):
+            _add_image(tag["content"].strip())
+            if len(result_images) >= max_images:
+                return result_images
+
+    # Strategy 3: <img> with product-related attributes
+    product_img_selectors = [
+        "[class*='product'] img[src]",
+        "[class*='Product'] img[src]",
+        "[id*='product'] img[src]",
+        "[id*='Product'] img[src]",
+        "[data-testid*='product'] img[src]",
+        "[class*='gallery'] img[src]",
+        "[class*='Gallery'] img[src]",
+        "[class*='main-image'] img[src]",
+        "[class*='hero'] img[src]",
+        "[class*='detail'] img[src]",
+    ]
+    for selector in product_img_selectors:
+        for img in soup.select(selector):
+            src = img.get("src", "").strip()
+            if not src:
                 continue
-            key_norm = name.lower().strip()
-            if key_norm in seen:
-                continue
-            seen.add(key_norm)
-            features.append({"nombre": name, "valor": value})
+            # Skip tiny images (icons, spacers, etc.)
+            width = img.get("width", "")
+            height = img.get("height", "")
+            try:
+                if width and int(width) < 100:
+                    continue
+                if height and int(height) < 100:
+                    continue
+            except (ValueError, TypeError):
+                pass
+            _add_image(src)
+            if len(result_images) >= max_images:
+                return result_images
 
-    return features
+    # Strategy 4: <img> with descriptive alt text (product views)
+    # Look for images with alt text containing view patterns like "Front", "Back", "Left", etc.
+    view_patterns = ("front", "back", "left", "right", "side", "view", "angle", "hero", "main")
+    for img in soup.find_all("img"):
+        src = img.get("src", "").strip()
+        if not src:
+            continue
+        alt = (img.get("alt") or "").lower()
+        # Match images with view-related alt text
+        if any(pat in alt for pat in view_patterns):
+            _add_image(src)
+            if len(result_images) >= max_images:
+                return result_images
+
+    # Strategy 5: Any reasonably sized <img> in the page (last resort)
+    for img in soup.find_all("img"):
+        src = img.get("src", "").strip()
+        if not src:
+            continue
+        # Check alt text for product hints
+        alt = (img.get("alt") or "").lower()
+        if any(kw in alt for kw in ("product", "producto", "image", "foto")):
+            _add_image(src)
+            if len(result_images) >= max_images:
+                return result_images
+
+    return result_images
 
 
-def _extract_brand_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
+def _extract_brand_specs(soup: BeautifulSoup, marca: str = "") -> list[dict[str, str]]:
     """Extract specs from brand-specific dynamic containers.
 
     Many manufacturer sites (Samsung, LG, etc.) render specs via JS into
     custom component classes instead of standard ``<table>`` elements.
     This function tries a curated list of known selectors and returns the
     first set of results that yields at least one characteristic.
+
+    *marca* (lowercase) is used to gate network-backed extractors (TCL)
+    so we only hit their APIs for the matching brand.
     """
     features: list[dict[str, str]] = []
     seen: set[str] = set()
+
+    # ── TCL: JSON API via #pageData + data-api ────────────────────────────
+    if marca == "tcl":
+        tcl_features = spec_extractors.extract_tcl_specs(soup)
+        for tf in tcl_features:
+            if tf["nombre"].lower() not in seen:
+                seen.add(tf["nombre"].lower())
+                features.append(tf)
+        if features:
+            return features
 
     # ── Samsung: pdd32-product-spec components ────────────────────────────
     for item in soup.select(".pdd32-product-spec__content-item"):
@@ -885,41 +1349,145 @@ def _extract_brand_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
     return features
 
 
-# ── EAV writer ──────────────────────────────────────────────────────────────
+def force_full_page_load(driver: webdriver.Chrome) -> None:
+    """Progressive-scroll + expand all hidden content so page_source is complete.
+
+    Steps:
+      1. Smooth incremental scroll to bottom (triggers IntersectionObserver
+         and other lazy-load hooks).
+      2. Click / open every collapsed accordion, <details>, and
+         button[aria-expanded="false"].
+      3. Scroll back to top and let the browser settle.
+    """
+    # 1. Progressive scroll down in 500px increments
+    scroll_pause = 0.3
+    driver.execute_script("""
+        return (async () => {
+            const delay = ms => new Promise(r => setTimeout(r, ms));
+            const step = 500;
+            const max  = document.body.scrollHeight;
+            for (let y = 0; y <= max; y += step) {
+                window.scrollTo({top: y, behavior: 'smooth'});
+                await delay(""" + str(int(scroll_pause * 1000)) + """);
+            }
+            window.scrollTo(0, document.body.scrollHeight);
+            await delay(500);
+        })();
+    """)
+    time.sleep(1)
+
+    # 2. Expand all collapsed elements
+    driver.execute_script("""
+        // buttons / divs with aria-expanded="false"
+        document.querySelectorAll(
+            '[aria-expanded="false"], details:not([open])'
+        ).forEach(el => {
+            try { el.click(); } catch(e) {}
+            if (el.tagName === 'DETAILS') el.open = true;
+        });
+        // common accordion / tab triggers
+        document.querySelectorAll(
+            '[class*="accordion"] > [role="button"],' +
+            '[class*="Accordion"] > [role="button"],' +
+            '[class*="tab"][role="tab"]:not([aria-selected="true"]),' +
+            '.collapsible-header, .expand-more, .show-more'
+        ).forEach(el => { try { el.click(); } catch(e) {} });
+    """)
+    time.sleep(1.5)
+
+    # 3. Scroll back to top and let animations finish
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(0.5)
 
 
-def _write_eav(pid: int, caracteristicas: list[dict]) -> None:
-    """Persist scraped characteristics into local 3NF EAV tables."""
-    conn = get_connection()
+def _extract_logitech_specs(html: str, url: str = "") -> list[dict[str, str]]:
+    """Extract specs from Logitech product pages.
+
+    Logitech embeds structured spec data in JavaScript objects with two
+    patterns:
+
+    1. Physical dimensions (nested specs:{spec:[...]})
+       Dimensions:{facet:"Dimensiones",...,specs:{spec:[
+         {facet:"Mouse MX Master 3S",...,specs:{spec:[
+           {facet:"Altura",value:"124.9 mm",...},
+           ...
+         ]}},
+       ]}}
+
+    2. Technical specs (facet + values array)
+       {facet:"Tecnología del sensor",values:[{value:"Alta precisión Darkfield",...}]}
+
+    This function extracts both patterns via regex on the raw HTML.
+    """
+    import re
+
+    features: list[dict[str, str]] = []
+    seen: set[str] = set()
+
     try:
-        conn.execute(
-            "DELETE FROM producto_caracteristicas WHERE id_prestashop = ?", (pid,)
-        )
-        for ch in caracteristicas:
-            nombre = ch.get("nombre", "").strip()
-            valor = ch.get("valor", "").strip()
-            if not nombre or not valor:
+        # ── Strategy 1: Physical dimensions (nested specs:{spec:[...]}) ──
+        # The Dimensions block contains nested spec arrays.  We cannot use
+        # a simple [^}] bracket-counting regex because the content itself
+        # contains nested braces.  Instead, find every leaf-level
+        # facet:"Name",value:"Value" pair inside the Dimensions block.
+        #
+        # Locate the Dimensions block start → grab a large window after it
+        dim_start = re.search(r'Dimensions:\{', html)
+        if dim_start:
+            # Grab up to 3000 chars after Dimensions:{ — enough for all
+            # nested specs (mouse + receiver) without crossing into the
+            # next top-level key.
+            window = html[dim_start.start():dim_start.start() + 3000]
+            # Leaf specs have: facet:"Name",value:"NonEmpty",numeric:
+            # Skip entries with value:"" (section headers like "Mouse MX Master 3S")
+            for m in re.finditer(
+                r'facet:"([^"]+)",value:"([^"]+)",numeric:', window
+            ):
+                name, value = m.group(1), m.group(2)
+                if name not in seen:
+                    seen.add(name)
+                    features.append({"nombre": name, "valor": value})
+
+        # ── Strategy 2: Technical specs (facet + values:[{value:...}]) ──
+        # These appear in sections: connectivity, sensor, battery, etc.
+        # Pattern: facet:"FacetName",values:[{value:"ValueStr",variants:
+        for m in re.finditer(
+            r'facet:"([^"]+)",values:\[\{value:"([^"]*)"',
+            html,
+        ):
+            name, value = m.group(1), m.group(2)
+            if value and name not in seen:
+                seen.add(name)
+                features.append({"nombre": name, "valor": value})
+
+        # ── Strategy 3: Visible DOM text (fallback) ─────────────────────
+        # After force_full_page_load, accordions are open and spec text
+        # is rendered.  Parse "Key: Value" lines from body text.
+        body_soup = BeautifulSoup(html, "lxml")
+        body_text = body_soup.get_text(separator="\n")
+        _SKIP = {"mouse mx master 3s", "receiver usb logi bolt (sólo para standard edition)"}
+        for line in body_text.split("\n"):
+            line = line.strip()
+            if ":" not in line:
                 continue
-            row_c = conn.execute(
-                "SELECT id_caracteristica FROM caracteristicas WHERE nombre_caracteristica = ?",
-                (nombre,),
-            ).fetchone()
-            if row_c:
-                cid = row_c["id_caracteristica"]
-            else:
-                cur = conn.execute(
-                    "INSERT INTO caracteristicas (nombre_caracteristica) VALUES (?)",
-                    (nombre,),
-                )
-                cid = cur.lastrowid
-            conn.execute(
-                "INSERT OR REPLACE INTO producto_caracteristicas "
-                "(id_prestashop, id_caracteristica, valor) VALUES (?, ?, ?)",
-                (pid, cid, valor),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+            # Split on first colon only
+            name, _, value = line.partition(":")
+            name, value = name.strip(), value.strip()
+            if (
+                name
+                and value
+                and len(name) < 60
+                and len(value) < 200
+                and name.lower() not in _SKIP
+                and name.lower() not in seen
+            ):
+                seen.add(name.lower())
+                features.append({"nombre": name, "valor": value})
+
+    except Exception as exc:
+        logger.warning("  LOGITECH  extraction failed: %s", exc)
+
+    return features
 
 
 # ── HTTP helper (kept for potential future use) ─────────────────────────────
@@ -1114,6 +1682,10 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     """
     logger.info("  MANUAL_URL  id=%d  fetching %s", product_id, url)
 
+    # Spec-sheet PDFs (gfast & co.): download + extract directly, no Selenium.
+    if (url or "").lower().split("?")[0].rstrip("/").endswith(".pdf"):
+        return _scrape_pdf_datasheet(url, product_id)
+
     driver = None
     try:
         driver = _create_driver()
@@ -1139,6 +1711,25 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
                 "proceeding with whatever rendered",
                 product_id, SELENIUM_TIMEOUT,
             )
+
+        # Hydrate: progressive scroll + expand accordions + settle
+        # Increase script timeout for async scroll JS on heavy pages
+        # Non-fatal: specs are usually rendered at page load already; the
+        # smooth-scroll can exceed the timeout on heavy pages (Samsung 4MB+),
+        # but a partial DOM is still usable.
+        driver.set_script_timeout(60)
+        try:
+            force_full_page_load(driver)
+        except Exception as exc:
+            logger.warning(
+                "  MANUAL_URL  id=%d  force_full_page_load failed (%s), "
+                "proceeding with partial DOM",
+                product_id, exc,
+            )
+        driver.set_script_timeout(SELENIUM_TIMEOUT)
+        logger.debug(
+            "  MANUAL_URL  id=%d  force_full_page_load done", product_id
+        )
 
         # Use JS execution instead of driver.page_source — Samsung's
         # heavy pages often cause the /source endpoint to time out.
@@ -1188,6 +1779,9 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
                     )
                 except Exception:
                     pass
+                driver.set_script_timeout(60)
+                force_full_page_load(driver)
+                driver.set_script_timeout(SELENIUM_TIMEOUT)
                 try:
                     page_source = driver.execute_script(
                         "return document.documentElement.outerHTML"
@@ -1203,42 +1797,255 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
                     driver.quit()
             soup = BeautifulSoup(page_source, "lxml")
 
-    # 1. Try JSON-LD (most structured)
-    result = _extract_json_ld(soup)
+    # 1. Try enhanced JSON-LD (most structured, includes QuantitativeValue)
+    result = spec_extractors.extract_jsonld_product(soup)
 
-    # 2. Fallback to OG / meta tags
+    # 2. Fallback to OG / meta tags (enhanced with product: tags)
     if not result:
-        result = _extract_meta(soup)
+        og_data = spec_extractors.extract_og_product_meta(soup)
+        if og_data.get("title"):
+            result = {
+                "title": og_data.get("title", ""),
+                "descripcion": og_data.get("desc", ""),
+                "descripcion_corta": "",
+                "marca": og_data.get("brand", ""),
+                "modelo": og_data.get("retailer_id", ""),
+                "resumen": "",
+                "caracteristicas": [],
+                "imagen_url": og_data.get("img", ""),
+                "imagen_urls": [og_data["img"]] if og_data.get("img") else [],
+                "_source": "og_meta",
+            }
 
     if not result:
         logger.warning("  MANUAL_URL  id=%d  no product data found at %s", product_id, url)
         return None
 
-    # 3. Augment with brand-specific + HTML table specs (deduplicated merge)
-    brand_features = _extract_brand_specs(soup)
-    table_features = _extract_tables(soup)
-    all_spec_features = brand_features + table_features
-    if all_spec_features:
-        existing_names = {
-            ch["nombre"].lower().strip()
-            for ch in (result.get("caracteristicas") or [])
-        }
-        for tf in all_spec_features:
-            if tf["nombre"].lower().strip() not in existing_names:
-                result["caracteristicas"].append(tf)
+    # 2b. Backfill marca/modelo from DB product name when scraper didn't find them
+    if not result.get("marca") or not result.get("modelo"):
+        try:
+            _conn = get_connection()
+            try:
+                _row = _conn.execute(
+                    "SELECT nombre, marca FROM productos WHERE id_prestashop = ?",
+                    (product_id,),
+                ).fetchone()
+            finally:
+                _conn.close()
+            if _row:
+                db_nombre = _row["nombre"] or ""
+                if not result.get("marca"):
+                    inferred = _infer_brand_from_name(db_nombre)
+                    if inferred:
+                        result["marca"] = inferred.title()
+                        logger.info(
+                            "  MANUAL_URL  id=%d  inferred marca=%r from product name",
+                            product_id, inferred,
+                        )
+                if not result.get("modelo"):
+                    title = result.get("title") or db_nombre
+                    model = _extract_model_from_name(title, result.get("marca") or "")
+                    if model:
+                        result["modelo"] = model
+                        logger.info(
+                            "  MANUAL_URL  id=%d  inferred modelo=%r from title",
+                            product_id, model,
+                        )
+        except Exception as exc:
+            logger.debug("  MANUAL_URL  id=%d  marca/modelo inference failed: %s", product_id, exc)
+
+    # 3. Augment with generic + brand-specific spec extractors
+    existing_names = {
+        ch["nombre"].lower().strip()
+        for ch in (result.get("caracteristicas") or [])
+    }
+
+    # 3a. Brand-specific extraction (Logitech, Samsung, LG, Brother, Pantum)
+    marca_lower = (result.get("marca") or "").lower()
+
+    # Logitech: regex on JS-embedded spec objects + body text
+    if marca_lower == "logitech" and page_source:
+        logger.info("  MANUAL_URL  id=%d  trying Logitech-specific extraction", product_id)
+        logitech_features = _extract_logitech_specs(page_source, final_url)
+        for lf in logitech_features:
+            if lf["nombre"].lower().strip() not in existing_names:
+                result["caracteristicas"].append(lf)
+                existing_names.add(lf["nombre"].lower().strip())
+        logger.info(
+            "  MANUAL_URL  id=%d  Logitech extraction: %d specs",
+            product_id, len(logitech_features),
+        )
+
+    # Samsung, LG, Brother, Pantum and other brand-specific selectors
+    brand_features = _extract_brand_specs(soup, marca_lower)
+    for bf in brand_features:
+        if bf["nombre"].lower().strip() not in existing_names:
+            result["caracteristicas"].append(bf)
+            existing_names.add(bf["nombre"].lower().strip())
+
+    # 3b. Generic extractors (work across all sites without per-brand config)
+    _generic_extractors = [
+        ("tables", spec_extractors.extract_tables),
+        ("dl/dt/dd", spec_extractors.extract_dl_dt_dd),
+        ("microdata", spec_extractors.extract_microdata),
+        ("div_spec_rows", spec_extractors.extract_div_spec_rows),
+    ]
+    for name, extractor in _generic_extractors:
+        try:
+            generic_features = extractor(soup)
+            added = 0
+            for gf in generic_features:
+                if gf["nombre"].lower().strip() not in existing_names:
+                    result["caracteristicas"].append(gf)
+                    existing_names.add(gf["nombre"].lower().strip())
+                    added += 1
+            if added:
+                logger.debug(
+                    "  MANUAL_URL  id=%d  %s: +%d specs",
+                    product_id, name, added,
+                )
+        except Exception as exc:
+            logger.debug("  MANUAL_URL  id=%d  %s extractor failed: %s", product_id, name, exc)
+
+    # 3b2. body-text fallback — only when structured extractors under-produced.
+    # It scans rendered text for "Key: Value" lines and is noisy on JS-heavy
+    # pages (variant selectors, review snippets, navigation help).  Skipping it
+    # when we already have a solid set avoids pushing junk characteristics.
+    if len(result.get("caracteristicas") or []) < 10:
+        try:
+            bt_features = spec_extractors.extract_body_text_specs(soup)
+            for bf in bt_features:
+                if bf["nombre"].lower().strip() not in existing_names:
+                    result["caracteristicas"].append(bf)
+                    existing_names.add(bf["nombre"].lower().strip())
+            if bt_features:
+                logger.debug(
+                    "  MANUAL_URL  id=%d  body_text: +%d specs",
+                    product_id, len(bt_features),
+                )
+        except Exception as exc:
+            logger.debug("  MANUAL_URL  id=%d  body_text extractor failed: %s", product_id, exc)
+
+    # 3c. JS state objects extraction (Next.js, Nuxt, etc.)
+    if page_source:
+        try:
+            js_features = spec_extractors.extract_js_state_objects(page_source)
+            for jf in js_features:
+                if jf["nombre"].lower().strip() not in existing_names:
+                    result["caracteristicas"].append(jf)
+                    existing_names.add(jf["nombre"].lower().strip())
+            if js_features:
+                logger.debug(
+                    "  MANUAL_URL  id=%d  js_state: +%d specs",
+                    product_id, len(js_features),
+                )
+        except Exception as exc:
+            logger.debug("  MANUAL_URL  id=%d  js_state extraction failed: %s", product_id, exc)
+
+    # 3a. PDF spec sheet fallback (for brands like Xerox that publish specs in PDFs)
+    MIN_CHARS_FOR_PDF = 5
+    if len(result.get("caracteristicas") or []) < MIN_CHARS_FOR_PDF:
+        from .pdf_scraper import find_spec_pdf_links, extract_specs_from_pdf
+
+        pdf_links = find_spec_pdf_links(soup, final_url)
+        if pdf_links:
+            logger.info(
+                "  MANUAL_URL  id=%d  found %d PDF links, trying extraction",
+                product_id, len(pdf_links),
+            )
+            # Try the first spec PDF link
+            for pdf_info in pdf_links[:1]:  # Try first PDF only
+                pdf_url = pdf_info["url"]
+                pdf_text = pdf_info.get("text", "")
+                logger.info("  MANUAL_URL  id=%d  trying PDF: %s (%s)", product_id, pdf_url[:80], pdf_text[:50])
+                pdf_data = extract_specs_from_pdf(
+                    pdf_url,
+                    marca=result.get("marca") or "",
+                    modelo=result.get("modelo") or "",
+                )
+                if pdf_data and pdf_data.get("caracteristicas"):
+                    # Merge PDF characteristics (don't overwrite existing)
+                    existing_names = {
+                        ch["nombre"].lower().strip()
+                        for ch in (result.get("caracteristicas") or [])
+                    }
+                    for pc in pdf_data["caracteristicas"]:
+                        if pc["nombre"].lower().strip() not in existing_names:
+                            result["caracteristicas"].append(pc)
+                    logger.info(
+                        "  MANUAL_URL  id=%d  PDF extraction succeeded (%d new characteristics)",
+                        product_id, len(pdf_data["caracteristicas"]),
+                    )
+                    break
 
     # 3b. If no image from JSON-LD/OG, try <img> tag extraction
     if not result.get("imagen_url"):
         img_url = _extract_image(soup, final_url)
         if img_url:
             result["imagen_url"] = img_url
+            # Also add to imagen_urls if not already there
+            if img_url not in result.get("imagen_urls", []):
+                result.setdefault("imagen_urls", []).append(img_url)
+
+    # 3c. Ensure we have multiple images if possible
+    if len(result.get("imagen_urls") or []) < 2:
+        more_imgs = _extract_images(soup, final_url, max_images=4)
+        for img in more_imgs:
+            if img not in result.get("imagen_urls", []):
+                result.setdefault("imagen_urls", []).append(img)
+        # Update main imagen_url if still empty
+        if not result.get("imagen_url") and result.get("imagen_urls"):
+            result["imagen_url"] = result["imagen_urls"][0]
+
+    # 3c. Final cleanup: drop obvious junk characteristics regardless of source
+    # (title duplication, bare size-word names, review/navigation noise).
+    cleaned = []
+    for ch in (result.get("caracteristicas") or []):
+        chn = str(ch.get("nombre") or "").strip()
+        chv = str(ch.get("valor") or "").strip()
+        chn_lower = chn.lower()
+        if chn_lower in ("tamaño", "talla", "size", "medida", "pantalla", "dimension", "dimensions"):
+            continue
+        if any(j in chn_lower for j in ("review", "promotion", "trustmark", "navigate to", "go to ", "to do this", "to fine-tune")):
+            continue
+        if len(chn) > 20 and chn_lower == chv.lower():
+            continue
+        cleaned.append(ch)
+    if len(cleaned) != len(result.get("caracteristicas") or []):
+        logger.info(
+            "  MANUAL_URL  id=%d  cleanup dropped %d junk characteristics",
+            product_id, len(result.get("caracteristicas") or []) - len(cleaned),
+        )
+    result["caracteristicas"] = cleaned
 
     logger.info(
         "  MANUAL_URL  id=%d  extracted %d characteristics from %s",
         product_id, len(result.get("caracteristicas") or []), final_url,
     )
 
+    # Store source URL for validation
+    result["url"] = url
+
     # 4. Persist to DB
+    _persist_scrape_result(product_id, result, source="manual_url", url=url)
+
+    logger.info(
+        "  MANUAL_URL  id=%d  saved %s %s (%d chars)",
+        product_id,
+        (result.get("marca") or "").strip(),
+        (result.get("modelo") or "").strip(),
+        len(result.get("caracteristicas") or []),
+    )
+    return result
+
+
+def _persist_scrape_result(product_id: int, result: dict, source: str, url: str) -> None:
+    """Persist a scraped product result to the local DB.
+
+    Updates ``productos`` (proposal JSON, marca/modelo, imagen, status) with
+    the *source* URL, appends an audit entry, and writes the EAV
+    characteristics — all in one transaction.
+    """
     conn = get_connection()
     try:
         marca = (result.get("marca") or "").strip()
@@ -1265,7 +2072,7 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
 
         # Audit
         detalle = json.dumps({
-            "source": "manual_url",
+            "source": source,
             "url": url,
             "marca": marca,
             "modelo": modelo,
@@ -1276,17 +2083,120 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
             "VALUES (?, ?, ?, ?)",
             (product_id, "admin", "scrape_manual_url", detalle),
         )
+
+        # Write EAV using the same connection
+        write_eav(conn, product_id, result.get("caracteristicas") or [])
         conn.commit()
     finally:
         conn.close()
 
-    # 5. Write EAV (outside the products conn — _write_eav opens its own)
-    _write_eav(product_id, result.get("caracteristicas") or [])
+
+def _scrape_pdf_datasheet(pdf_url: str, product_id: int) -> dict | None:
+    """Download a spec-sheet PDF and persist the extracted characteristics.
+
+    Used for brands whose data sheets are PDFs (gfast) reached via the
+    ``pdf_sitemap`` strategy or pasted manually in the Admin UI.
+
+    Some data sheets are image-based PDFs with no extractable text; those are
+    supplemented from the "Key: Value" spec lines rendered inline on the
+    category page the PDF was found on.
+    """
+    from .pdf_scraper import extract_specs_from_pdf
+
+    logger.info("  PDF_DATASHEET  id=%d  extracting %s", product_id, pdf_url[:100])
+
+    data = extract_specs_from_pdf(pdf_url, marca="", modelo="")
+    characteristics = (data.get("caracteristicas") or []) if data else []
+
+    # Fall back to the inline spec lines of the category page the PDF came from
+    if len(characteristics) < 5:
+        seen = {c["nombre"].lower().strip() for c in characteristics}
+        for page_url in _pages_for_pdf(pdf_url):
+            soup, _links = _fetch_page(page_url)
+            inline = _extract_inline_specs_from_soup(soup, pdf_url)
+            if inline:
+                logger.info(
+                    "  PDF_DATASHEET  id=%d  %d inline specs from %s",
+                    product_id, len(inline), page_url,
+                )
+                for ic in inline:
+                    if ic["nombre"].lower().strip() not in seen:
+                        characteristics.append(ic)
+                        seen.add(ic["nombre"].lower().strip())
+            if len(characteristics) >= 5:
+                break
+
+    if not characteristics:
+        logger.warning(
+            "  PDF_DATASHEET  id=%d  no characteristics extracted from %s",
+            product_id, pdf_url[:100],
+        )
+        return None
+
+    result = {
+        "title": "",
+        "descripcion": "",
+        "descripcion_corta": "",
+        "marca": "",
+        "modelo": "",
+        "resumen": "",
+        "caracteristicas": characteristics,
+        "imagen_url": "",
+        "imagen_urls": [],
+        "_source": "pdf_scraper",
+    }
+
+    # Backfill marca/modelo from the DB product name when the PDF has none
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT nombre FROM productos WHERE id_prestashop = ?",
+                (product_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        db_nombre = (row["nombre"] or "") if row else ""
+        if db_nombre:
+            inferred = _infer_brand_from_name(db_nombre)
+            if inferred:
+                result["marca"] = inferred.title()
+                logger.info(
+                    "  PDF_DATASHEET  id=%d  inferred marca=%r from product name",
+                    product_id, inferred,
+                )
+            # gfast models embed hyphens (T-195, N-536R) which
+            # _extract_model_from_name strips away, so derive the modelo from
+            # the digit-bearing model tokens instead of the noisy name words.
+            digit_tokens = [
+                t for t in _extract_pdf_model_tokens(db_nombre, inferred or "")
+                if any(ch.isdigit() for ch in t)
+            ]
+            if digit_tokens:
+                model = max(digit_tokens, key=len).upper()
+                result["modelo"] = model
+                logger.info(
+                    "  PDF_DATASHEET  id=%d  inferred modelo=%r from product name",
+                    product_id, model,
+                )
+    except Exception as exc:
+        logger.debug(
+            "  PDF_DATASHEET  id=%d  marca/modelo inference failed: %s",
+            product_id, exc,
+        )
+
+    result["url"] = pdf_url
+
+    _persist_scrape_result(
+        product_id, result, source="pdf_sitemap", url=pdf_url,
+    )
 
     logger.info(
-        "  MANUAL_URL  id=%d  saved %s %s (%d chars)",
-        product_id, marca, modelo,
-        len(result.get("caracteristicas") or []),
+        "  PDF_DATASHEET  id=%d  saved %s %s (%d chars)",
+        product_id,
+        result["marca"],
+        result["modelo"],
+        len(result["caracteristicas"]),
     )
     return result
 

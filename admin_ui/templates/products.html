@@ -5,6 +5,8 @@
 <div class="tabs">
   <a class="tab {{ 'tab--active' if current_status == 'pending' }}"
      href="{{ url_for('products', status='pending') }}">Pendientes</a>
+  <a class="tab {{ 'tab--active' if current_status == 'to_activate' }}"
+     href="{{ url_for('products', status='to_activate') }}">Para activar</a>
   <a class="tab {{ 'tab--active' if current_status == 'to_enrich' }}"
      href="{{ url_for('products', status='to_enrich') }}">Sin procesar</a>
   <a class="tab {{ 'tab--active' if current_status == 'approved' }}"
@@ -29,7 +31,7 @@
   </thead>
   <tbody>
   {% for p in products %}
-    <tr>
+    <tr class="row--clickable" onclick="window.location.href='{{ url_for('diff', pid=p.id_prestashop) }}'">
       <td class="cell--thumb">
         {% if p.imagen_url %}
           <img src="{{ p.imagen_url }}" alt="" class="thumb"
@@ -42,7 +44,9 @@
       <td>{{ p.marca or '—' }}</td>
       <td>{{ p.modelo or '—' }}</td>
       <td>
-        {% if p.estado_actualizacion == 'actualizado' %}
+        {% if p.pendiente_activar %}
+          <span class="badge badge--violet">para activar</span>
+        {% elif p.estado_actualizacion == 'actualizado' %}
           <span class="badge badge--ok">actualizado</span>
         {% elif p.tiene_propuesta %}
           <span class="badge badge--warn">pendiente</span>

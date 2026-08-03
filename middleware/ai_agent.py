@@ -21,6 +21,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from .config import API_SLEEP
+from . import spec_extractors
 
 SELENIUM_TIMEOUT = 12
 
@@ -110,109 +111,6 @@ def _fetch(url: str) -> str | None:
         return None
     finally:
         time.sleep(API_SLEEP)
-
-
-def _extract_json_ld(soup: BeautifulSoup) -> dict | None:
-    """Extract product data from JSON-LD blocks."""
-    for script in soup.find_all("script", type="application/ld+json"):
-        raw = script.string
-        if not raw:
-            continue
-        try:
-            import json
-            parsed = json.loads(raw)
-        except Exception:
-            continue
-        items = parsed if isinstance(parsed, list) else [parsed]
-        for item in items:
-            if item.get("@type") not in ("Product", "product"):
-                continue
-            name = item.get("name", "")
-            desc = item.get("description", "")
-            img = ""
-            raw_img = item.get("image")
-            if isinstance(raw_img, list) and raw_img:
-                first = raw_img[0]
-                img = first.get("url", first) if isinstance(first, dict) else first
-            elif isinstance(raw_img, dict):
-                img = raw_img.get("url", "")
-            elif isinstance(raw_img, str):
-                img = raw_img
-            brand = ""
-            raw_brand = item.get("brand")
-            if isinstance(raw_brand, dict):
-                brand = raw_brand.get("name", "")
-            elif isinstance(raw_brand, str):
-                brand = raw_brand
-            modelo = item.get("mpn") or item.get("sku") or ""
-            features = []
-            for prop in item.get("additionalProperty") or []:
-                n = (prop.get("name") or "").strip()
-                v = (prop.get("value") or "").strip()
-                if n and v:
-                    features.append({"nombre": n, "valor": v})
-            return {
-                "title": name,
-                "descripcion": desc,
-                "descripcion_corta": "",
-                "marca": brand,
-                "modelo": modelo,
-                "resumen": "",
-                "caracteristicas": features,
-                "imagen_url": img,
-                "_source": "ai_agent_jsonld",
-            }
-    return None
-
-
-def _extract_meta(soup: BeautifulSoup) -> dict | None:
-    """Extract from OG / meta tags."""
-    og = {}
-    for attr in ("property", "name"):
-        for key, field in [("og:title", "title"), ("og:description", "desc"),
-                           ("description", "desc"), ("og:image", "img")]:
-            tag = soup.find("meta", attrs={attr: key})
-            if tag and tag.get("content") and field not in og:
-                og[field] = tag["content"].strip()
-    title = og.get("title", "")
-    if not title:
-        t = soup.find("title")
-        if t:
-            title = t.get_text(strip=True)
-    if not title:
-        return None
-    return {
-        "title": title,
-        "descripcion": og.get("desc", ""),
-        "descripcion_corta": "",
-        "marca": "",
-        "modelo": "",
-        "resumen": "",
-        "caracteristicas": [],
-        "imagen_url": og.get("img", ""),
-        "_source": "ai_agent_meta",
-    }
-
-
-def _extract_tables(soup: BeautifulSoup) -> list[dict[str, str]]:
-    """Extract key-value pairs from HTML tables."""
-    features = []
-    seen = set()
-    for table in soup.find_all("table"):
-        for tr in table.find_all("tr"):
-            cells = tr.find_all(["td", "th"])
-            if len(cells) != 2:
-                continue
-            name = cells[0].get_text(strip=True)
-            value = cells[1].get_text(strip=True)
-            if not name or not value or len(name) < 2 or len(value) < 2:
-                continue
-            key_norm = name.lower().strip()
-            if key_norm in seen:
-                continue
-            seen.add(key_norm)
-            features.append({"nombre": name, "valor": value})
-    return features
 
 
 def _extract_image_from_tags(soup: BeautifulSoup) -> str:
@@ -327,129 +225,6 @@ def _extract_apple_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
     return features
 
 
-def _extract_tcl_specs(soup: BeautifulSoup, html: str) -> list[dict[str, str]]:
-    """Extract specs from TCL product pages via their JSON API.
-
-    TCL stores spec data in a Knockout.js-powered component with a
-    ``data-api`` attribute pointing to a JSON endpoint.  The selector
-    in the URL is base64-encoded and contains the product variant path
-    (e.g. ``/content/brandsite-product/asia/en/tvs/p735/55p735``).
-
-    This function:
-    1. Finds the ``data-api`` attribute on ``.product-spec-component``
-    2. Decodes the base64 selector to extract locale + model info
-       (or constructs it from the data-api path if not present)
-    3. Fetches the JSON API endpoint
-    4. Parses the tabbed spec structure
-    """
-    import base64
-    import json as _json
-    import re as _re
-    from urllib.parse import urljoin
-
-    # Find the spec component with data-api
-    spec_component = soup.select_one(".product-spec-component[data-api]")
-    if not spec_component:
-        return []
-
-    data_api = spec_component.get("data-api", "")
-    if not data_api:
-        return []
-
-    # Check if the data-api already has a base64 selector
-    match = _re.search(r"\.([A-Za-z0-9+/=]+)\.json$", data_api)
-    if match:
-        # Selector already present - decode it
-        selector_b64 = match.group(1)
-        try:
-            selector_path = base64.b64decode(selector_b64).decode("utf-8")
-        except Exception:
-            return []
-    else:
-        # No selector yet - construct from the data-api path
-        # data-api: /content/brandsite/{locale}/tvs/{model}/jcr:...
-        # We need: /content/brandsite-product/{locale}/tvs/{model}/{variant}
-        api_match = _re.search(
-            r"/content/brandsite/([^/]+/[^/]+)/tvs/([^/]+)/", data_api
-        )
-        if not api_match:
-            return []
-        locale = api_match.group(1)  # e.g. "asia/en"
-        model_slug = api_match.group(2)  # e.g. "p735"
-
-        # Try to find the product size from the page title or URL
-        # Look for patterns like "55P735" or "55\" in the title
-        title = ""
-        title_tag = soup.find("title")
-        if title_tag:
-            title = title_tag.get_text(strip=True)
-
-        # Try to extract size from title (e.g. "55P735" or "55\"")
-        size_match = _re.search(r"(\d{2})" + _re.escape(model_slug), title, _re.I)
-        if size_match:
-            size = size_match.group(1)
-        else:
-            # Try to find size from page URL or any size reference
-            size_match = _re.search(r"(\d{2})(?:inch|\")", title, _re.I)
-            if size_match:
-                size = size_match.group(1)
-            else:
-                # Default to 55 inch
-                size = "55"
-
-        variant_slug = f"{size}{model_slug}"
-        selector_path = f"/content/brandsite-product/{locale}/tvs/{model_slug}/{variant_slug}"
-
-    # Extract locale, model, variant from selector path
-    parts = selector_path.strip("/").split("/")
-    if len(parts) < 5:
-        return []
-
-    locale = "/".join(parts[1:3])  # e.g. "asia/en"
-    model_slug = parts[3]  # e.g. "p735"
-    variant_slug = parts[4]  # e.g. "55p735"
-
-    # Construct the API URL with the selector
-    selector_b64 = base64.b64encode(selector_path.encode()).decode()
-
-    # Build the full API URL - prepend TCL domain since data-api is a relative path
-    api_base = data_api  # Use the full data-api path
-    api_url = f"https://www.tcl.com{api_base}.{selector_b64}.json"
-
-    logger.info("  TCL_SPEC  fetching API: variant=%s", variant_slug)
-
-    # Fetch the API
-    try:
-        resp = _SESSION.get(api_url, timeout=30)
-        resp.raise_for_status()
-        api_data = _json.loads(resp.text)
-    except Exception as exc:
-        logger.debug("  TCL_SPEC  API fetch failed: %s", exc)
-        return []
-
-    if api_data.get("code") != 200 or not api_data.get("data"):
-        logger.debug("  TCL_SPEC  API returned code=%s", api_data.get("code"))
-        return []
-
-    # Parse the tabbed spec structure
-    features = []
-    seen = set()
-    for tab in api_data["data"]:
-        for item in tab.get("specItems", []):
-            name = item.get("name", "").strip()
-            value = item.get("value", "").strip()
-            if not name or not value or value == "\\":
-                continue
-            key_norm = name.lower().strip()
-            if key_norm in seen:
-                continue
-            seen.add(key_norm)
-            features.append({"nombre": name, "valor": value})
-
-    logger.info("  TCL_SPEC  extracted %d characteristics", len(features))
-    return features
-
-
 def _get_brand_official_urls(marca: str, nombre: str) -> list[str]:
     """Generate candidate official product page URLs for known brands.
 
@@ -482,35 +257,69 @@ def _parse_page(html: str, current_url: str = "") -> dict | None:
     """Try all parsers on a page and return the best result."""
     soup = BeautifulSoup(html, "lxml")
 
-    result = _extract_json_ld(soup)
+    result = spec_extractors.extract_jsonld_product(soup)
     if not result:
-        result = _extract_meta(soup)
+        # Fallback to basic OG meta
+        og_data = spec_extractors.extract_og_product_meta(soup)
+        if og_data.get("title"):
+            result = {
+                "title": og_data.get("title", ""),
+                "descripcion": og_data.get("desc", ""),
+                "descripcion_corta": "",
+                "marca": og_data.get("brand", ""),
+                "modelo": og_data.get("retailer_id", ""),
+                "resumen": "",
+                "caracteristicas": [],
+                "imagen_url": og_data.get("img", ""),
+                "imagen_urls": [og_data["img"]] if og_data.get("img") else [],
+                "_source": "og_meta",
+            }
     if not result:
         return None
 
     # Merge features from multiple sources
     existing = {ch["nombre"].lower() for ch in result.get("caracteristicas") or []}
 
-    # TCL-specific: JSON API with base64 selector
-    tcl_features = _extract_tcl_specs(soup, html)
+    # Brand-specific extractors (TCL, Apple)
+    tcl_features = spec_extractors.extract_tcl_specs(soup)
     for tf in tcl_features:
         if tf["nombre"].lower() not in existing:
             result["caracteristicas"].append(tf)
             existing.add(tf["nombre"].lower())
 
-    # Apple-specific format (gb-header + gb-list_item)
     apple_features = _extract_apple_specs(soup)
     for af in apple_features:
         if af["nombre"].lower() not in existing:
             result["caracteristicas"].append(af)
             existing.add(af["nombre"].lower())
 
-    # Standard HTML tables
-    table_features = _extract_tables(soup)
-    for tf in table_features:
-        if tf["nombre"].lower() not in existing:
-            result["caracteristicas"].append(tf)
-            existing.add(tf["nombre"].lower())
+    # Generic extractors (work across all sites)
+    _generic_extractors = [
+        ("tables", spec_extractors.extract_tables),
+        ("dl/dt/dd", spec_extractors.extract_dl_dt_dd),
+        ("microdata", spec_extractors.extract_microdata),
+        ("div_spec_rows", spec_extractors.extract_div_spec_rows),
+        ("body_text", spec_extractors.extract_body_text_specs),
+    ]
+    for name, extractor in _generic_extractors:
+        try:
+            generic_features = extractor(soup)
+            for gf in generic_features:
+                if gf["nombre"].lower() not in existing:
+                    result["caracteristicas"].append(gf)
+                    existing.add(gf["nombre"].lower())
+        except Exception as exc:
+            logger.debug("  AI_AGENT  %s extractor failed: %s", name, exc)
+
+    # JS state objects (Next.js, Nuxt, etc.)
+    try:
+        js_features = spec_extractors.extract_js_state_objects(html)
+        for jf in js_features:
+            if jf["nombre"].lower() not in existing:
+                result["caracteristicas"].append(jf)
+                existing.add(jf["nombre"].lower())
+    except Exception as exc:
+        logger.debug("  AI_AGENT  js_state extraction failed: %s", exc)
 
     # Extract image from <img> tags if not found in JSON-LD/OG
     if not result.get("imagen_url"):
@@ -521,6 +330,13 @@ def _parse_page(html: str, current_url: str = "") -> dict | None:
             if img_url.startswith("/") and current_url:
                 img_url = urljoin(current_url, img_url)
             result["imagen_url"] = img_url
+            # Also add to imagen_urls if not already there
+            if img_url not in result.get("imagen_urls", []):
+                result.setdefault("imagen_urls", []).append(img_url)
+
+    # Store the source URL so validation can check for junk sources
+    if current_url:
+        result["url"] = current_url
 
     return result
 
@@ -562,8 +378,8 @@ def _build_search_query(marca: str, nombre: str) -> str:
     if all_models:
         # Use the first (most specific) model number
         model = all_models[0]
-        # Build query with brand + model
-        query = f"{marca} {model} especificaciones".strip() if marca else f"{model} especificaciones"
+        # Build query with brand + model, excluding manual/support pages
+        query = f"{marca} {model} especificaciones -manual -guia -tutorial -soporte".strip() if marca else f"{model} especificaciones -manual -guia"
     else:
         # No model found, use full name but remove noise words
         from .official_scraper import _NOISE_WORDS
@@ -574,7 +390,7 @@ def _build_search_query(marca: str, nombre: str) -> str:
             if w.lower() not in _NOISE_WORDS and len(w) > 1
         ]
         cleaned_name = " ".join(cleaned_words[:5])  # Limit to 5 words
-        query = f"{marca} {cleaned_name} especificaciones".strip() if marca else f"{cleaned_name} especificaciones"
+        query = f"{marca} {cleaned_name} especificaciones -manual -guia".strip() if marca else f"{cleaned_name} especificaciones -manual -guia"
 
     return query
 
@@ -609,6 +425,10 @@ def enrich_with_ai(marca: str, nombre: str) -> dict | None:
         url = r.get("href") or r.get("link") or ""
         title = r.get("title", "")
         if not url or not url.startswith("http"):
+            continue
+        # Skip PDFs, manuals, and support pages
+        if any(url.lower().endswith(ext) for ext in ('.pdf', '.doc', '.docx', '.xls')):
+            logger.info("  AI_AGENT  skipping non-HTML: %s", url[:80])
             continue
 
         logger.info("  AI_AGENT  trying: %s (%s)", url, title[:60])

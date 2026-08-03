@@ -34,11 +34,16 @@ GLOSSARY = sorted([
 
 
 def _protect_glossary(text: str) -> tuple[str, dict[str, str]]:
-    """Replace protected terms with opaque placeholders."""
+    """Replace protected terms with opaque placeholders.
+
+    Uses a bracketed marker (survives GoogleTranslator verbatim).  NUL-based
+    placeholders (``\\x00G{i}\\x00``) were silently rewritten to U+FFFD by
+    the translator, so the restore never matched and leaked "G{i}".
+    """
     placeholders: dict[str, str] = {}
     for i, term in enumerate(GLOSSARY):
         if term in text:
-            key = f"\x00G{i}\x00"
+            key = f"[[GLOSS{i}]]"
             text = text.replace(term, key)
             placeholders[key] = term
     return text, placeholders

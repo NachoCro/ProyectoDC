@@ -3,8 +3,8 @@ import logging
 from .config import BATCH_SIZE
 from .db import (
     get_connection,
-    get_subcategoria_id,
     get_subcategoria_by_ps_category,
+    ensure_subcategoria,
     has_ean_in_db,
     has_product_not_found,
     has_id_in_db,
@@ -77,13 +77,19 @@ def run(dry_run: bool = False) -> list[dict]:
             marca = manufacturers.get(int(id_mfr), "") if id_mfr else ""
 
             id_category = p.get("id_category_default")
+            nombre = p.get("name") or ""
+
+            # Resolve modelo from product name
+            from .official_scraper import _extract_model_from_name
+            modelo = _extract_model_from_name(nombre, marca)
+
             candidates.append({
                 "id_prestashop": int(pid),
                 "ean": p.get("ean13") or None,
                 "mpn": p.get("mpn") or None,
                 "marca": marca,
-                "modelo": "",  # resolved from product name — deferred
-                "nombre": p.get("name"),  # product name from PrestaShop
+                "modelo": modelo,
+                "nombre": nombre,
                 "id_category_default": int(id_category) if id_category else None,
             })
 
@@ -117,15 +123,7 @@ def run(dry_run: bool = False) -> list[dict]:
                 ps_cat_id = p.get("id_category_default")
                 sub_id = get_subcategoria_by_ps_category(conn, ps_cat_id) if ps_cat_id else None
                 if sub_id is None:
-                    sub_id = get_subcategoria_id(conn, "SIN CLASIFICAR")
-                if sub_id is None:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO subcategorias "
-                        "(id_categoria, nombre_subcategoria) VALUES (?, ?)",
-                        (1, "SIN CLASIFICAR"),
-                    )
-                    conn.commit()
-                    sub_id = get_subcategoria_id(conn, "SIN CLASIFICAR")
+                    sub_id = ensure_subcategoria(conn, "SIN CLASIFICAR")
 
                 ok = insert_product(
                     conn,

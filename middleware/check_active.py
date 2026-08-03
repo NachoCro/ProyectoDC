@@ -14,7 +14,7 @@ import logging
 from .db import (
     get_connection,
     get_subcategoria_by_ps_category,
-    get_subcategoria_id,
+    ensure_subcategoria,
     insert_product,
 )
 from . import pipeline_state
@@ -23,24 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_product_in_db(pid: int) -> dict | None:
-    """Ensure the product exists in the local DB. Insert if missing.
+    """Ensure the product exists in the local DB with fresh data from PrestaShop.
 
+    Always fetches the latest data from PrestaShop and upserts into the local DB.
     Returns the product row as a dict, or None if it couldn't be created.
     """
+    from admin_ui.prestashop import AdminPrestashopClient
+
     conn = get_connection()
     try:
-        row = conn.execute(
-            """SELECT p.*, COALESCE(s.nombre_subcategoria, '') AS subcat_name
-               FROM productos p
-               LEFT JOIN subcategorias s ON p.id_subcategoria = s.id_subcategoria
-               WHERE p.id_prestashop = ?""", (pid,)
-        ).fetchone()
-
-        if row is not None:
-            return dict(row)
-
-        # Product not in local DB — fetch from PrestaShop and insert
-        from admin_ui.prestashop import AdminPrestashopClient
         client = AdminPrestashopClient()
         ps_product = client.get_product(pid)
 
@@ -59,24 +50,18 @@ def _ensure_product_in_db(pid: int) -> dict | None:
         ps_cat_id = int(id_category) if id_category else None
         sub_id = get_subcategoria_by_ps_category(conn, ps_cat_id) if ps_cat_id else None
         if sub_id is None:
-            sub_id = get_subcategoria_id(conn, "SIN CLASIFICAR")
-        if sub_id is None:
-            conn.execute(
-                "INSERT OR IGNORE INTO subcategorias "
-                "(id_categoria, nombre_subcategoria) VALUES (?, ?)",
-                (1, "SIN CLASIFICAR"),
-            )
-            conn.commit()
-            sub_id = get_subcategoria_id(conn, "SIN CLASIFICAR")
+            sub_id = ensure_subcategoria(conn, "SIN CLASIFICAR")
 
-        # Extract name (multi-language)
+        # Extract name (multi-language, JSON format uses "value" key)
         nombre = None
         name_el = ps_product.get("name", "")
         if isinstance(name_el, list):
             for n in name_el:
-                if isinstance(n, dict) and n.get("#text"):
-                    nombre = n["#text"]
-                    break
+                if isinstance(n, dict):
+                    val = n.get("value") or n.get("#text")
+                    if val:
+                        nombre = val
+                        break
                 elif isinstance(n, str) and n:
                     nombre = n
                     break
@@ -93,19 +78,31 @@ def _ensure_product_in_db(pid: int) -> dict | None:
         if isinstance(mpn, str) and not mpn.strip():
             mpn = None
 
-        # Insert into local DB
-        insert_product(
-            conn,
-            id_prestashop=pid,
-            id_subcategoria=sub_id or 1,
-            ean=ean,
-            mpn=mpn,
-            marca=marca,
-            modelo="",
-            nombre=nombre,
-        )
+        # Upsert into local DB
+        existing = conn.execute(
+            "SELECT id_prestashop FROM productos WHERE id_prestashop = ?", (pid,)
+        ).fetchone()
+
+        if existing:
+            conn.execute(
+                """UPDATE productos
+                   SET nombre = ?, ean = ?, mpn = ?, marca = ?,
+                       id_subcategoria = ?
+                   WHERE id_prestashop = ?""",
+                (nombre, ean, mpn, marca, sub_id or 1, pid),
+            )
+        else:
+            insert_product(
+                conn,
+                id_prestashop=pid,
+                id_subcategoria=sub_id or 1,
+                ean=ean,
+                mpn=mpn,
+                marca=marca,
+                modelo="",
+                nombre=nombre,
+            )
         conn.commit()
-        logger.info("  INSERTED product %d into local DB (marca=%s, nombre=%s)", pid, marca, nombre)
 
         # Re-fetch the row
         row = conn.execute(
@@ -149,7 +146,8 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
     Returns True if the product was completed successfully.
     """
     from admin_ui.prestashop import AdminPrestashopClient, PrestashopError
-    from .enrich import _build_description, _write_eav
+    from .enrich import _build_description
+    from .db import write_eav
     from .characteristics import merge_characteristics
     from .descriptions import get_description
 
@@ -280,15 +278,23 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
                 )
                 logger.info("  Updated product %d: %s", pid, list(updates.keys()))
 
-            # Upload image if missing
+            # Upload images if missing
             if "image" in missing:
-                imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
-                if imagen_url:
-                    img_id = client.upload_product_image(pid, imagen_url)
-                    if img_id:
-                        logger.info("  Uploaded image for product %d: %s", pid, imagen_url)
+                imagen_urls = proposal.get("imagen_urls") or []
+                if imagen_urls:
+                    uploaded_ids = client.upload_product_images(pid, imagen_urls)
+                    if uploaded_ids:
+                        logger.info("  Uploaded %d images for product %d", len(uploaded_ids), pid)
                     else:
-                        logger.warning("  Failed to upload image for product %d", pid)
+                        logger.warning("  Failed to upload images for product %d", pid)
+                else:
+                    imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
+                    if imagen_url:
+                        img_id = client.upload_product_image(pid, imagen_url)
+                        if img_id:
+                            logger.info("  Uploaded image for product %d: %s", pid, imagen_url)
+                        else:
+                            logger.warning("  Failed to upload image for product %d", pid)
 
             # Update local DB
             marca_final = proposal.get("marca") or product.get("marca") or ""
@@ -301,6 +307,8 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
                        modelo = ?,
                        imagen_url = ?,
                        active_verified = 1,
+                       product_not_found = 0,
+                       estado_actualizacion = 'actualizado',
                        fecha_sincronizacion = datetime('now')
                    WHERE id_prestashop = ?""",
                 (marca_final, modelo_final, imagen_url or None, pid),
@@ -311,7 +319,7 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
                 chars = proposal.get("caracteristicas") or []
                 merged_chars = merge_characteristics(chars, subcat_name)
                 if merged_chars:
-                    _write_eav(conn, pid, merged_chars)
+                    write_eav(conn, pid, merged_chars)
 
             # Audit log
             detalle = json.dumps({
@@ -447,6 +455,132 @@ def check_all_active(dry_run: bool = False) -> dict:
     logger.info(
         "Check complete: %d total, %d complete, %d incomplete, %d auto-completed, %d failed",
         total, complete_count, incomplete_count, completed_count, failed_count,
+    )
+
+    return result
+
+
+def _mark_pending_activation(pid: int) -> None:
+    """Mark an inactive product as ready to be activated (pendiente_activar = 1)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE productos SET pendiente_activar = 1 WHERE id_prestashop = ?",
+            (pid,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def check_inactive_pending(dry_run: bool = False) -> dict:
+    """Check inactive products with stock (qty >= 1) for completeness.
+
+    Complete products are marked with ``pendiente_activar = 1`` so they show
+    up as "para activar" in the admin UI. Incomplete ones are auto-completed
+    through the enrichment pipeline (mirrors active verification).
+
+    Returns a dict with:
+    - ``total``: total inactive products seen
+    - ``with_stock``: number of inactive products with stock >= 1
+    - ``complete``: number of complete products (incl. previously marked)
+    - ``marked``: number of products newly marked as ready to activate
+    - ``incomplete``: number of incomplete products
+    - ``completed``: number of products auto-completed
+    - ``failed``: number of products that failed to complete
+    """
+    from middleware.prestashop import PrestashopClient
+
+    client = PrestashopClient()
+    total = 0
+    with_stock = 0
+    complete_count = 0
+    marked = 0
+    incomplete_count = 0
+    completed_count = 0
+    failed_count = 0
+
+    offset = 0
+    limit = 50
+    while True:
+        products = client.get_inactive_products(limit=limit, offset=offset)
+        if not products:
+            break
+
+        stock = client.get_stock_map([int(p["id"]) for p in products])
+
+        for p in products:
+            pid = int(p["id"])
+            total += 1
+            if stock.get(pid, 0) < 1:
+                continue
+            with_stock += 1
+            name = p.get("name") or f"Product {pid}"
+
+            # Skip products already marked as ready to activate
+            conn_check = get_connection()
+            try:
+                row_check = conn_check.execute(
+                    "SELECT pendiente_activar FROM productos WHERE id_prestashop = ?",
+                    (pid,),
+                ).fetchone()
+                if row_check and row_check["pendiente_activar"]:
+                    complete_count += 1
+                    logger.debug("  SKIP  id=%d  %s — already marked for activation", pid, name)
+                    continue
+            finally:
+                conn_check.close()
+
+            pipeline_state.add_log(f"Verificando producto inactivo: {name} (id={pid})")
+
+            completeness = check_product_completeness(pid)
+            if completeness["is_complete"]:
+                complete_count += 1
+                logger.info("  OK  id=%d  %s — complete, marking for activation", pid, name)
+                if not dry_run:
+                    _mark_pending_activation(pid)
+                    marked += 1
+                else:
+                    logger.info("  DRY RUN — would mark id=%d as ready to activate", pid)
+            else:
+                incomplete_count += 1
+                logger.info(
+                    "  INCOMPLETE  id=%d  %s — missing: %s",
+                    pid, name, completeness["missing"],
+                )
+
+                if not dry_run:
+                    success = complete_incomplete_product(pid, dry_run=False)
+                    if success:
+                        completed_count += 1
+                        # Re-check after auto-completion; mark only if fully complete
+                        recheck = check_product_completeness(pid)
+                        if recheck["is_complete"]:
+                            _mark_pending_activation(pid)
+                            marked += 1
+                        logger.info("  AUTO-COMPLETED  id=%d  %s", pid, name)
+                    else:
+                        failed_count += 1
+                        logger.warning("  FAILED TO COMPLETE  id=%d  %s", pid, name)
+                else:
+                    logger.info("  DRY RUN — would complete id=%d  %s", pid, name)
+
+        offset += limit
+
+    result = {
+        "total": total,
+        "with_stock": with_stock,
+        "complete": complete_count,
+        "marked": marked,
+        "incomplete": incomplete_count,
+        "completed": completed_count,
+        "failed": failed_count,
+    }
+
+    logger.info(
+        "Inactive check complete: %d total, %d with stock, %d marked for activation, "
+        "%d incomplete, %d auto-completed, %d failed",
+        total, with_stock, marked, incomplete_count, completed_count, failed_count,
     )
 
     return result

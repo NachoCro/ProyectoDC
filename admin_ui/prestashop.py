@@ -89,9 +89,7 @@ class AdminPrestashopClient(PrestashopClient):
         resp.raise_for_status()
         time.sleep(API_SLEEP)
         data = resp.json()
-        # Real PrestaShop returns {"product": …}; mock wraps in {"prestashop": {"product": …}}
-        if "prestashop" in data:
-            return data["prestashop"]["product"]
+        # PrestaShop webservice returns {"product": …}
         return data["product"]
 
     def get_product_completeness(self, product_id: int) -> dict:
@@ -382,7 +380,10 @@ class AdminPrestashopClient(PrestashopClient):
         )
         if not resp.ok:
             logger.error("  PrestaShop error for feature '%s': %s", name, resp.text[:500])
-        resp.raise_for_status()
+            raise PrestashopError(
+                f"Create feature '{name}' failed HTTP {resp.status_code}: "
+                f"{resp.text[:500]}"
+            )
         created = ET.fromstring(resp.content)
         fid = created.findtext(".//product_feature/id")
         if fid:
@@ -396,13 +397,12 @@ class AdminPrestashopClient(PrestashopClient):
         fv_el = SubElement(payload, "product_feature_value")
         idf_el = SubElement(fv_el, "id_feature")
         idf_el.text = str(feature_id)
-        custom_el = SubElement(fv_el, "custom")
-        custom_el.text = "0"
         val_el = SubElement(fv_el, "value")
         lang_el = SubElement(val_el, "language")
         lang_el.set("id", LANG_ID)
         lang_el.text = value
         xml_body = ET.tostring(payload, encoding="utf-8", xml_declaration=True)
+        logger.debug("  POST product_feature_values XML: %s", xml_body.decode())
         resp = self._session.post(
             f"{self._base}/product_feature_values",
             data=xml_body,
@@ -411,7 +411,10 @@ class AdminPrestashopClient(PrestashopClient):
         if not resp.ok:
             logger.error("  PrestaShop 400 for value '%s' (feature %d): %s",
                          value, feature_id, resp.text[:500])
-        resp.raise_for_status()
+            raise PrestashopError(
+                f"Create feature value '{value}' (feature {feature_id}) failed HTTP "
+                f"{resp.status_code}: {resp.text[:500]}"
+            )
         created = ET.fromstring(resp.content)
         fvid = created.findtext(".//product_feature_value/id")
         if fvid:
@@ -426,6 +429,10 @@ class AdminPrestashopClient(PrestashopClient):
         """
         if not image_url:
             return None
+
+        # Normalize protocol-relative URLs (e.g. "//cdn.example.com/img.png")
+        if image_url.startswith("//"):
+            image_url = "https:" + image_url
 
         # Download
         try:
@@ -461,6 +468,18 @@ class AdminPrestashopClient(PrestashopClient):
 
         logger.warning("Could not parse image ID from PrestaShop response for product %d", product_id)
         return None
+
+    def upload_product_images(self, product_id: int, image_urls: list[str]) -> list[int]:
+        """Download and upload multiple images to PrestaShop.
+
+        Returns list of successfully uploaded image IDs.
+        """
+        uploaded_ids: list[int] = []
+        for url in image_urls:
+            img_id = self.upload_product_image(product_id, url)
+            if img_id is not None:
+                uploaded_ids.append(img_id)
+        return uploaded_ids
 
     # ------------------------------------------------------------------
     # helpers

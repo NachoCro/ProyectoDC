@@ -21,6 +21,10 @@
     </div>
     <div class="brands-form__row">
       <input type="text" name="result_selector" placeholder="Selector CSS (opcional)">
+      <label class="brand-pdf-toggle">
+        <input type="checkbox" name="has_pdf" value="1">
+        <span>Publica specs en PDF</span>
+      </label>
       <button type="submit" class="btn btn--approve btn--lg">Agregar</button>
     </div>
   </form>
@@ -38,11 +42,46 @@
     <span class="brand-row__name">{{ name }}</span>
     <input type="text" name="search_url" value="{{ info.search_url }}" class="brand-row__input" required>
     <input type="text" name="result_selector" value="{{ info.result_selector }}" class="brand-row__input">
+    <label class="brand-pdf-toggle" title="Publica especificaciones en PDF">
+      <input type="checkbox" name="has_pdf" value="1" {{ 'checked' if info.get('has_pdf') }}>
+      <span>PDF</span>
+    </label>
     <button type="submit" class="btn btn--sync btn--sm">Guardar</button>
     <button type="button" class="btn btn--reject btn--sm" onclick="if(confirm('Eliminar marca &quot;{{ name }}&quot;?'))this.form.action='{{ url_for('brands_delete') }}';this.form.submit();">Eliminar</button>
   </form>
   {% endfor %}
 </div>
+
+<style>
+.brand-pdf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  background: #f0f0f0;
+  transition: background 0.2s;
+}
+.brand-pdf-toggle:has(input:checked) {
+  background: #d4edda;
+  color: #155724;
+}
+.brand-pdf-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+[data-theme="dark"] .brand-pdf-toggle {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+[data-theme="dark"] .brand-pdf-toggle:has(input:checked) {
+  background: #1e4d2b;
+  color: #68d391;
+}
+</style>
 
 <script>
 (function() {

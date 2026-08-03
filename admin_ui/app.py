@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
-from middleware.db import get_connection, get_subcategoria_id, insert_product
+from middleware.config import DAEMON_INTERVAL
+from middleware.db import get_connection, write_eav
 from middleware.characteristics import merge_characteristics
 from middleware.descriptions import get_description
 from middleware.official_scraper import scrape_from_direct_url
@@ -97,31 +98,27 @@ def dashboard():
             "SELECT COUNT(*) FROM productos WHERE estado_actualizacion = 'actualizado'"
         ).fetchone()[0]
 
+        para_activar = conn.execute(
+            "SELECT COUNT(*) FROM productos WHERE pendiente_activar = 1"
+        ).fetchone()[0]
+
+        activos = conn.execute(
+            "SELECT COUNT(*) FROM productos WHERE active_verified = 1"
+        ).fetchone()[0]
+
     finally:
         conn.close()
 
-    # Parse pipeline_current: "2/5|123|Product Name" → (current, total, pid, name)
-    pipeline_current_raw = get_config("pipeline_current", "")
-    pipeline_current = None
-    if pipeline_current_raw:
-        try:
-            parts = pipeline_current_raw.split("|")
-            progress = parts[0].split("/")
-            pipeline_current = {
-                "current": int(progress[0]),
-                "total": int(progress[1]),
-                "pid": parts[1] if len(parts) > 1 else "",
-                "name": parts[2] if len(parts) > 2 else "",
-            }
-        except (ValueError, IndexError):
-            pipeline_current = None
+    from middleware.daemon_state import get_state
+    daemon = get_state()
 
     return render_template(
         "dashboard.html",
         pending=pending,
         listos=listos,
-        pipeline_running=_is_pipeline_running(),
-        pipeline_current=pipeline_current,
+        para_activar=para_activar,
+        activos=activos,
+        daemon=daemon,
     )
 
 
@@ -144,11 +141,14 @@ def products():
     try:
         query = """SELECT id_prestashop, ean, mpn, marca, modelo, nombre,
                           imagen_url, estado_actualizacion, product_not_found,
+                          pendiente_activar,
                           icecat_json IS NOT NULL AS tiene_propuesta
                    FROM productos"""
 
         if status == "pending":
             query += " WHERE icecat_json IS NOT NULL"
+        elif status == "to_activate":
+            query += " WHERE pendiente_activar = 1"
         elif status == "approved":
             query += " WHERE estado_actualizacion = 'actualizado'"
         elif status == "errors":
@@ -275,14 +275,22 @@ def approve(pid: int):
 
             client.put_product(pid, updates, feature_pairs=feature_pairs or None)
 
-            # upload image if available
-            imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
-            if imagen_url:
-                img_id = client.upload_product_image(pid, imagen_url)
-                if img_id is not None:
-                    updates["imagen_subida"] = img_id
+            # upload images if available
+            imagen_urls = proposal.get("imagen_urls") or []
+            if imagen_urls:
+                uploaded_ids = client.upload_product_images(pid, imagen_urls)
+                if uploaded_ids:
+                    updates["imagen_subida"] = uploaded_ids[0]
                 else:
                     updates["imagen_subida"] = False
+            else:
+                imagen_url = proposal.get("imagen_url") or product.get("imagen_url") or ""
+                if imagen_url:
+                    img_id = client.upload_product_image(pid, imagen_url)
+                    if img_id is not None:
+                        updates["imagen_subida"] = img_id
+                    else:
+                        updates["imagen_subida"] = False
         except PrestashopError as exc:
             _audit(conn, pid, actor, "error", str(exc))
             conn.commit()
@@ -304,35 +312,14 @@ def approve(pid: int):
             (marca_final, modelo_final, imagen_url or None, pid),
         )
 
-        # write merged characteristics locally (EAV)
-        conn.execute(
-            "DELETE FROM producto_caracteristicas WHERE id_prestashop = ?", (pid,)
-        )
-        for ch in merged_chars:
-            nombre = ch.get("nombre", "").strip()
-            valor = ch.get("valor", "").strip()
-            if not nombre or not valor:
-                continue
-
-            # find or create characteristic entry in dictionary
-            row_c = conn.execute(
-                "SELECT id_caracteristica FROM caracteristicas WHERE nombre_caracteristica = ?",
-                (nombre,),
-            ).fetchone()
-            if row_c:
-                cid = row_c["id_caracteristica"]
-            else:
-                cur = conn.execute(
-                    "INSERT INTO caracteristicas (nombre_caracteristica) VALUES (?)",
-                    (nombre,),
-                )
-                cid = cur.lastrowid
-
+        if activate:
             conn.execute(
-                "INSERT OR REPLACE INTO producto_caracteristicas "
-                "(id_prestashop, id_caracteristica, valor) VALUES (?, ?, ?)",
-                (pid, cid, valor),
+                "UPDATE productos SET pendiente_activar = 0 WHERE id_prestashop = ?",
+                (pid,),
             )
+
+        # write merged characteristics locally (EAV)
+        write_eav(conn, pid, merged_chars)
 
         accion = "aprobado_y_activado" if activate else "aprobado"
         detalle = {
@@ -371,7 +358,7 @@ def approve(pid: int):
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "redirect": url_for("products")})
+    return jsonify({"ok": True, "redirect": url_for("diff", pid=pid)})
 
 
 # ======================================================================
@@ -393,7 +380,7 @@ def reject(pid: int):
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "redirect": url_for("products")})
+    return jsonify({"ok": True, "redirect": url_for("diff", pid=pid)})
 
 
 # ======================================================================
@@ -419,7 +406,7 @@ def re_sync(pid: int):
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "redirect": url_for("products")})
+    return jsonify({"ok": True, "redirect": url_for("diff", pid=pid)})
 
 
 # ======================================================================
@@ -550,7 +537,19 @@ def audit():
         page=page,
         pages=pages,
         total=total,
+        cleared=request.args.get("cleared") == "1",
     )
+
+
+@app.route("/audit/clear", methods=["POST"])
+def audit_clear():
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM audit_log")
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("audit", cleared=1))
 
 
 # ======================================================================
@@ -628,12 +627,14 @@ def brands_add():
     name = request.form.get("name", "").strip().lower()
     search_url = request.form.get("search_url", "").strip()
     result_selector = request.form.get("result_selector", "").strip()
+    has_pdf = request.form.get("has_pdf") == "1"
     if not name or not search_url:
         return redirect(url_for("brands"))
     data = _load_brands()
     data[name] = {
         "search_url": search_url,
         "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
+        "has_pdf": has_pdf,
     }
     _save_brands(data)
     return redirect(url_for("brands", saved=name))
@@ -654,6 +655,7 @@ def brands_edit():
     name = request.form.get("name", "").strip().lower()
     search_url = request.form.get("search_url", "").strip()
     result_selector = request.form.get("result_selector", "").strip()
+    has_pdf = request.form.get("has_pdf") == "1"
     if not name or not search_url:
         return redirect(url_for("brands"))
     data = _load_brands()
@@ -662,6 +664,7 @@ def brands_edit():
     data[name] = {
         "search_url": search_url,
         "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
+        "has_pdf": has_pdf,
     }
     _save_brands(data)
     return redirect(url_for("brands", saved=name))
@@ -698,3 +701,93 @@ def check_active():
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return jsonify({"ok": True, "redirect": url_for("dashboard")})
+
+
+# ======================================================================
+# Daemon control
+# ======================================================================
+
+_daemon_process = None
+
+
+@app.route("/api/daemon-status")
+def daemon_status():
+    """Return daemon state as JSON (polled by dashboard)."""
+    from middleware.daemon_state import get_state
+    return jsonify(get_state())
+
+
+@app.route("/start-daemon", methods=["POST"])
+def start_daemon():
+    """Start the daemon as a background subprocess."""
+    global _daemon_process
+
+    from middleware.daemon_state import get_state
+    state = get_state()
+    if state["running"]:
+        return jsonify({"ok": False, "error": "El daemon ya está ejecutándose"}), 409
+
+    import subprocess
+    import sys
+    import os
+
+    interval = request.form.get("interval", type=int) or DAEMON_INTERVAL
+    dry_run = request.form.get("dry_run", "0") == "1"
+    check_inactive = request.form.get("check_inactive", "0") == "1"
+
+    cmd = [sys.executable, "daemon.py", "--interval", str(interval)]
+    if check_inactive:
+        cmd.append("--check-inactive")
+    if dry_run:
+        cmd.append("--dry-run")
+    if request.form.get("verbose", "0") == "1":
+        cmd.append("-v")
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            start_new_session=True,
+        )
+        _daemon_process = proc
+
+        # Write initial state to SQLite so the UI sees it immediately
+        from middleware.daemon_state import start as ds_start, set_pid
+        ds_start(interval, dry_run, check_inactive)
+        set_pid(proc.pid)
+
+        logger.info("Daemon started with PID %d", proc.pid)
+        return jsonify({"ok": True, "pid": proc.pid})
+    except Exception as exc:
+        logger.error("Failed to start daemon: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/stop-daemon", methods=["POST"])
+def stop_daemon():
+    """Stop the daemon process."""
+    global _daemon_process
+
+    from middleware.daemon_state import get_state, stop as ds_stop
+    state = get_state()
+
+    if not state["running"] and _daemon_process is None:
+        return jsonify({"ok": False, "error": "El daemon no está ejecutándose"}), 400
+
+    # Try to stop via stored PID
+    pid = state.get("pid") or (_daemon_process.pid if _daemon_process else None)
+    if pid:
+        try:
+            import os
+            import signal
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Sent SIGTERM to daemon PID %d", pid)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    # Write stopped state to SQLite immediately
+    ds_stop()
+    _daemon_process = None
+    return jsonify({"ok": True})

@@ -1,7 +1,8 @@
 {
   "hp": {
     "search_url": "https://www.hp.com/us-en/search.html?q={mpn}",
-    "result_selector": "a[href*='product'], .product-tile a, a[class*='product']"
+    "result_selector": "a[href*='product'], .product-tile a, a[class*='product']",
+    "has_pdf": true
   },
   "nisuta": {
     "search_url": "https://listado.mercadolibre.com.ar/nisuta-{mpn}",
@@ -21,11 +22,13 @@
   },
   "epson": {
     "search_url": "https://epson.com/search/?text={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']",
+    "has_pdf": true
   },
   "samsung": {
-    "search_url": "https://www.samsung.com/ar/aisearch/?searchvalue={mpn}",
-    "result_selector": "a[class*='product'], div[class*='product'] a, [data-testid*='product'] a"
+    "strategy": "sitemap",
+    "sitemap_url": "https://www.samsung.com/ar/vd-sitemap.xml",
+    "url_pattern": "/tvs/"
   },
   "tp-link": {
     "search_url": "https://www.tp-link.com/en/search/?q={mpn}",
@@ -53,7 +56,8 @@
   },
   "brother": {
     "search_url": "https://www.brother.com.ar/search#q={mpn}",
-    "result_selector": "a[href*='product'], a[href*='model'], .result-card a, a[class*='product']"
+    "result_selector": "a[href*='product'], a[href*='model'], .result-card a, a[class*='product']",
+    "direct_url_pattern": "https://www.brother.com.ar/products/{model_slug}"
   },
   "adata": {
     "search_url": "https://www.adata.com/es/search?q={mpn}",
@@ -114,7 +118,8 @@
   },
   "canon": {
     "search_url": "https://www.usa.canon.com/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']",
+    "has_pdf": true
   },
   "gigabyte": {
     "search_url": "https://www.gigabyte.com/Search?SearchWord={mpn}",
@@ -157,8 +162,8 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "gfast": {
-    "search_url": "https://gfast.com.ar/?s={mpn}&post_type=product",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "strategy": "pdf_sitemap",
+    "sitemap_url": "https://gfast.com.ar/wp-sitemap-posts-page-1.xml"
   },
   "marvo": {
     "search_url": "https://www.marvopro.com/search?q={mpn}",
@@ -245,8 +250,9 @@
     "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
   },
   "xerox": {
-    "search_url": "https://listado.mercadolibre.com.ar/xerox-{mpn}",
-    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']"
+    "search_url": "https://www.xerox.com/es-ar/search-results#q={mpn}&t=ProductInfo&sort=relevancy",
+    "result_selector": "a[href*='MLA-'], .ui-search-result a, a[class*='product']",
+    "has_pdf": true
   },
   "overtech": {
     "search_url": "https://listado.mercadolibre.com.ar/overtech-{mpn}",
@@ -463,7 +469,8 @@
   },
   "ricoh": {
     "search_url": "https://www.ricoh-usa.com/en/search?q={mpn}",
-    "result_selector": "a[href*='product'], .product-card a, a[class*='product']"
+    "result_selector": "a[href*='product'], .product-card a, a[class*='product']",
+    "has_pdf": true
   },
   "steelseries": {
     "search_url": "https://steelseries.com/search-catalog?q={mpn}",

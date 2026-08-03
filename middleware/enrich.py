@@ -16,10 +16,11 @@ import json
 import logging
 
 from .config import BATCH_SIZE
-from .db import get_connection, mark_not_found
+from .db import get_connection, mark_not_found, write_eav
 from .embedding import embedding_to_bytes, generate_embedding, score_match
 from .translate import translate_product
 from .characteristics import merge_characteristics
+from .spec_extractors import is_template_placeholder
 from .descriptions import get_description
 from . import pipeline_state
 
@@ -36,35 +37,6 @@ def _build_description(product_data: dict, caracteristicas: list | None = None) 
         for ch in chars if ch.get("nombre") and ch.get("valor")
     )
     return f'<div class="caracteristicas">{lines}</div>'
-
-
-def _write_eav(conn, pid: int, caracteristicas: list[dict]) -> None:
-    """Write characteristics into local EAV tables."""
-    conn.execute(
-        "DELETE FROM producto_caracteristicas WHERE id_prestashop = ?", (pid,)
-    )
-    for ch in caracteristicas:
-        nombre = ch.get("nombre", "").strip()
-        valor = ch.get("valor", "").strip()
-        if not nombre or not valor:
-            continue
-        row_c = conn.execute(
-            "SELECT id_caracteristica FROM caracteristicas WHERE nombre_caracteristica = ?",
-            (nombre,),
-        ).fetchone()
-        if row_c:
-            cid = row_c["id_caracteristica"]
-        else:
-            cur = conn.execute(
-                "INSERT INTO caracteristicas (nombre_caracteristica) VALUES (?)",
-                (nombre,),
-            )
-            cid = cur.lastrowid
-        conn.execute(
-            "INSERT OR REPLACE INTO producto_caracteristicas "
-            "(id_prestashop, id_caracteristica, valor) VALUES (?, ?, ?)",
-            (pid, cid, valor),
-        )
 
 
 def _push_to_prestashop(
@@ -123,10 +95,12 @@ def _push_to_prestashop(
         logger.error("  PUSH FAILED  id=%d  %s", pid, exc)
         return False
 
-    # Upload image (non-blocking)
-    imagen_url = product_data.get("imagen_url") or ""
-    if imagen_url:
-        client.upload_product_image(pid, imagen_url)
+    # Upload images (non-blocking)
+    imagen_urls = product_data.get("imagen_urls") or []
+    if imagen_urls:
+        client.upload_product_images(pid, imagen_urls)
+    elif product_data.get("imagen_url"):
+        client.upload_product_image(pid, product_data["imagen_url"])
 
     # Update local DB — approve and clear pending data
     conn.execute(
@@ -138,7 +112,7 @@ def _push_to_prestashop(
     )
 
     # Write characteristics locally (merged list)
-    _write_eav(conn, pid, merged_caracteristicas)
+    write_eav(conn, pid, merged_caracteristicas)
 
     # Audit log
     detalle = json.dumps({"marca": marca, "modelo": modelo}, ensure_ascii=False)
@@ -149,6 +123,149 @@ def _push_to_prestashop(
     conn.commit()
 
     logger.info("  PUSHED  id=%d  marca=%s  modelo=%s", pid, marca, modelo)
+    return True
+
+
+def _validate_scraped_data(product_data: dict, marca: str, nombre: str, pid: int) -> bool:
+    """Validate that scraped data corresponds to the expected product.
+
+    Checks:
+    1. Scraped brand matches expected brand (case-insensitive)
+    2. Scraped title/name contains expected model number from product name
+
+    Returns True if data looks correct, False if it should be rejected.
+    """
+    if not product_data:
+        return False
+
+    scraped_marca = (product_data.get("marca") or "").strip().lower()
+    expected_marca = marca.strip().lower()
+
+    def _brands_match(a: str, b: str) -> bool:
+        if a == b:
+            return True
+        a_words = set(a.replace("-", " ").split())
+        b_words = set(b.replace("-", " ").split())
+        if a_words & b_words:
+            return True
+        return (len(a) >= 3 and a in b) or (len(b) >= 3 and b in a)
+
+    # Check 1: brand must match (if both are present).  Sub-brand variants are
+    # accepted: "Logitech G" == Logitech, "HP Inc" == HP, "Samsung Electronics"
+    # == Samsung.
+    if scraped_marca and expected_marca and not _brands_match(scraped_marca, expected_marca):
+        logger.warning(
+            "  VALIDATE  id=%d  brand mismatch: scraped=%r expected=%r",
+            pid, scraped_marca, expected_marca,
+        )
+        return False
+
+    # Check 2: reject manual/support/FAQ sites (not actual product pages).
+    # Many brands host their authoritative specs on support/help subdomains
+    # (support.logi.com/.../Technical-Specifications, support.hp.com specs),
+    # so a "support" URL is only junk when it's NOT a specs page.  Pages whose
+    # URL or title signals specifications are accepted.
+    scraped_url = (product_data.get("url") or product_data.get("source_url") or "").lower()
+    scraped_title = (product_data.get("title") or product_data.get("titulo") or "").lower()
+
+    junk_patterns = ('manual', 'manual de usuario', 'guia', 'guía', 'tutorial',
+                     'soporte', 'support', 'faq', 'preguntas', 'solucion', 'troubleshoot',
+                     'service repair')
+    spec_signals = ('specification', 'specs', 'especificacion', 'especificaciones',
+                    'ficha tecnica', 'ficha-tecnica', 'technical-specification',
+                    'technical specification', 'caracteristicas')
+    def _is_specs_page(*texts: str) -> bool:
+        return any(sig in t for t in texts for sig in spec_signals)
+
+    if not _is_specs_page(scraped_url, scraped_title):
+        if any(p in scraped_url for p in junk_patterns):
+            logger.warning(
+                "  VALIDATE  id=%d  rejected manual/support source: url=%r", pid, scraped_url[:120],
+            )
+            return False
+    if any(p in scraped_title for p in junk_patterns) and not _is_specs_page(scraped_title):
+        logger.warning(
+            "  VALIDATE  id=%d  rejected manual/support title: %r", pid, scraped_title[:80],
+        )
+        return False
+
+    # Check 2b: size disambiguation for TVs/monitors.  If the product name
+    # specifies a size (e.g. 75") and the scraped title/specs mention a
+    # different size, the scraper grabbed the wrong variant (55" U8000F vs
+    # 75" U8000F share the same model tokens).  A size in the scraped title
+    # that differs from the expected one is fatal.
+    import re as _re
+    wanted_size = _re.search(r"(\d{2})\s*(?:\"|''|pulgadas|inches|inch|')(?!\w)", nombre, _re.I)
+    if wanted_size:
+        wanted = wanted_size.group(1)
+        scraped_size = _re.search(r"(\d{2})\s*(?:\"|''|pulgadas|inches|inch|')(?!\w)", scraped_title, _re.I)
+        if scraped_size and scraped_size.group(1) != wanted:
+            logger.warning(
+                "  VALIDATE  id=%d  size mismatch: wanted %s\" scraped %s\" (title=%r)",
+                pid, wanted, scraped_size.group(1), scraped_title[:80],
+            )
+            return False
+        # Also check size inside characteristics if present.  Multi-variant
+        # pages (Samsung, TCL, LG) list every size in the same DOM — e.g.
+        # "tamaño = 50\"" body-text artifact alongside the correct
+        # "Tamaño de pantalla = 75\"" — so a single mismatch is NOT fatal.
+        # Reject only when NO size characteristic matches the wanted size
+        # (i.e. the scraper grabbed a genuinely different variant).
+        size_re = r"(\d{2})\s*(?:\"|''|pulgadas|inches|inch|')(?!\w)"
+        wanted_re = _re.compile(rf"(?<![\d])({wanted})(?![\d])\s*(?:\"|''|pulgadas|inches|inch)", _re.I)
+        size_names = ("tamaño de pantalla", "screen size", "pantalla", "tamaño", "size", "diagonal")
+        size_exclude = ("paquete", "conjunto", "empaque", "caja", "pack", "stand", "dimensiones")
+        sizes_found = []
+        wanted_found = False
+        for ch in (product_data.get("caracteristicas") or []):
+            chv = str(ch.get("valor") or "")
+            chn = str(ch.get("nombre") or "").lower()
+            if not any(n in chn for n in size_names):
+                continue
+            if any(e in chn for e in size_exclude):
+                continue
+            if wanted_re.search(chv):
+                wanted_found = True
+            m = _re.search(size_re, chv, _re.I)
+            if m:
+                sizes_found.append(m.group(1))
+        if sizes_found and not wanted_found:
+            logger.warning(
+                "  VALIDATE  id=%d  size mismatch in characteristics: wanted %s\" got sizes=%s",
+                pid, wanted, sorted(set(sizes_found)),
+            )
+            return False
+
+    # Check 3: scraped title should contain at least one significant token
+    # from the expected product name (model number)
+    nombre_lower = nombre.lower()
+
+    if scraped_title:
+        import re
+        model_tokens = [
+            t for t in re.findall(r'[a-z]{2,}[-]?\d{1,}[a-z]{0,4}', nombre_lower)
+            if len(t) >= 3
+        ]
+        sig_words = [
+            w for w in nombre_lower.split()
+            if len(w) >= 3 and w not in (
+                'impresora', 'monitor', 'smart', 'mouse', 'wireless', 'laser',
+                'multifuncion', 'multifuncional', 'brother', 'logitech', 'samsung',
+            )
+        ]
+        check_tokens = model_tokens + sig_words
+
+        if check_tokens:
+            # Normalize: remove dashes for flexible matching (dcp-1617nw == dcp1617nw)
+            scraped_norm = scraped_title.replace('-', '').replace(' ', '')
+            matches = sum(1 for t in check_tokens if t.replace('-', '') in scraped_norm)
+            if matches == 0:
+                logger.warning(
+                    "  VALIDATE  id=%d  no token match: scraped_title=%r, expected_tokens=%s",
+                    pid, scraped_title[:80], check_tokens[:5],
+                )
+                return False
+
     return True
 
 
@@ -185,9 +302,14 @@ def _fetch_and_prepare(
             pipeline_state.add_log(f"Brand site encontrado, scrapeando: {found_url}")
             product_data = scrape_from_direct_url(found_url, pid)
             if product_data is not None:
-                n_chars = len(product_data.get("caracteristicas") or [])
-                logger.info("  BRAND_SEARCH  id=%d  succeeded (%d characteristics)", pid, n_chars)
-                pipeline_state.add_log(f"Brand site OK: {n_chars} características extraídas")
+                if not _validate_scraped_data(product_data, marca, nombre, pid):
+                    logger.warning("  BRAND_SEARCH  id=%d  data rejected — wrong product", pid)
+                    pipeline_state.add_log("Datos rechazados: no coincide con el producto esperado")
+                    product_data = None
+                else:
+                    n_chars = len(product_data.get("caracteristicas") or [])
+                    logger.info("  BRAND_SEARCH  id=%d  succeeded (%d characteristics)", pid, n_chars)
+                    pipeline_state.add_log(f"Brand site OK: {n_chars} características extraídas")
 
     # ── 1. AI agent (web search + extraction) ─────────────────────────────
     # Try AI agent if: (a) brand site search failed, or (b) brand site returned
@@ -197,32 +319,49 @@ def _fetch_and_prepare(
         product_data is not None
         and len(product_data.get("caracteristicas") or []) < MIN_CHARS_FOR_SUCCESS
     )
-    if (not product_data or brand_data_low) and marca and nombre and not dry_run:
+    if (not product_data or brand_data_low) and nombre and not dry_run:
         from .ai_agent import enrich_with_ai
 
-        logger.info("  AI_AGENT  id=%d  trying web search + extraction", pid)
+        # Use marca if available, otherwise try with just the product name
+        ai_marca = marca or ""
+        logger.info("  AI_AGENT  id=%d  trying web search + extraction (marca=%r)", pid, ai_marca)
         pipeline_state.add_log(f"Buscando con AI agent web search...")
-        ai_data = enrich_with_ai(marca, nombre)
+        ai_data = enrich_with_ai(ai_marca, nombre)
         if ai_data is not None:
             ai_chars = len(ai_data.get("caracteristicas") or [])
             logger.info("  AI_AGENT  id=%d  succeeded (%d characteristics)", pid, ai_chars)
             pipeline_state.add_log(f"AI agent OK: {ai_chars} características extraídas")
-            # Keep whichever source has more characteristics
-            if brand_data_low:
-                brand_chars = len(product_data.get("caracteristicas") or [])
-                if ai_chars > brand_chars:
-                    logger.info(
-                        "  AI_AGENT  id=%d  replacing brand site result (%d > %d chars)",
-                        pid, ai_chars, brand_chars,
-                    )
-                    product_data = ai_data
-                else:
-                    logger.info(
-                        "  AI_AGENT  id=%d  keeping brand site result (%d >= %d chars)",
-                        pid, brand_chars, ai_chars,
-                    )
+            # Validate AI data
+            # When marca is empty, AI agent may return data from reseller pages with no characteristics
+            # — require at least MIN_CHARS_FOR_SUCCESS characteristics to be useful
+            MIN_CHARS_WITHOUT_MARCA = 5
+            ai_valid = True
+            if marca and not _validate_scraped_data(ai_data, marca, nombre, pid):
+                ai_valid = False
+            elif not marca and ai_chars < MIN_CHARS_WITHOUT_MARCA:
+                ai_valid = False
+                logger.info("  AI_AGENT  id=%d  data rejected — too few characteristics (%d) without brand", pid, ai_chars)
+                pipeline_state.add_log(f"AI agent: solo {ai_chars} características, datos de página de reventa")
+            if not ai_valid:
+                logger.warning("  AI_AGENT  id=%d  data rejected — wrong product", pid)
+                pipeline_state.add_log("AI agent: datos rechazados, no coincide con el producto")
             else:
-                product_data = ai_data
+                # Keep whichever source has more characteristics
+                if brand_data_low:
+                    brand_chars = len(product_data.get("caracteristicas") or [])
+                    if ai_chars > brand_chars:
+                        logger.info(
+                            "  AI_AGENT  id=%d  replacing brand site result (%d > %d chars)",
+                            pid, ai_chars, brand_chars,
+                        )
+                        product_data = ai_data
+                    else:
+                        logger.info(
+                            "  AI_AGENT  id=%d  keeping brand site result (%d >= %d chars)",
+                            pid, brand_chars, ai_chars,
+                        )
+                else:
+                    product_data = ai_data
 
     # ── 2. Name-only search (no brand/MPN, but has a product name) ─────────
     if not product_data and nombre and not dry_run:
@@ -241,11 +380,16 @@ def _fetch_and_prepare(
                 logger.info("  NAME_SEARCH  id=%d  scraping %s", pid, found_url)
                 product_data = scrape_from_direct_url(found_url, pid)
                 if product_data is not None:
-                    n_chars = len(product_data.get("caracteristicas") or [])
-                    logger.info(
-                        "  NAME_SEARCH  id=%d  succeeded (%d characteristics)",
-                        pid, n_chars,
-                    )
+                    if not _validate_scraped_data(product_data, inferred_brand, nombre, pid):
+                        logger.warning("  NAME_SEARCH  id=%d  data rejected — wrong product", pid)
+                        pipeline_state.add_log("Name search: datos rechazados, no coincide con el producto")
+                        product_data = None
+                    else:
+                        n_chars = len(product_data.get("caracteristicas") or [])
+                        logger.info(
+                            "  NAME_SEARCH  id=%d  succeeded (%d characteristics)",
+                            pid, n_chars,
+                        )
 
             # Fallback: AI agent with inferred brand
             if not product_data:
@@ -258,12 +402,17 @@ def _fetch_and_prepare(
                 pipeline_state.add_log(f"Brand site no encontrado, buscando con AI agent...")
                 product_data = enrich_with_ai(inferred_brand, nombre)
                 if product_data is not None:
-                    n_chars = len(product_data.get("caracteristicas") or [])
-                    logger.info(
-                        "  NAME_SEARCH  id=%d  AI agent succeeded (%d characteristics)",
-                        pid, n_chars,
-                    )
-                    pipeline_state.add_log(f"AI agent OK: {n_chars} características extraídas")
+                    if not _validate_scraped_data(product_data, inferred_brand, nombre, pid):
+                        logger.warning("  NAME_SEARCH  id=%d  AI data rejected — wrong product", pid)
+                        pipeline_state.add_log("AI agent: datos rechazados, no coincide con el producto")
+                        product_data = None
+                    else:
+                        n_chars = len(product_data.get("caracteristicas") or [])
+                        logger.info(
+                            "  NAME_SEARCH  id=%d  AI agent succeeded (%d characteristics)",
+                            pid, n_chars,
+                        )
+                        pipeline_state.add_log(f"AI agent OK: {n_chars} características extraídas")
         else:
             logger.debug(
                 "  NAME_SEARCH  id=%d  no brand could be inferred from %r",
@@ -280,6 +429,18 @@ def _fetch_and_prepare(
             pipeline_state.add_log(f"Reintentar después — datos insuficientes")
             logger.warning("  RETRY-LATER  id=%d  (brand=%s name=%s)", pid, marca, nombre)
         return None, None, ""
+
+    # Backfill marca/modelo from product name if scraper didn't find them
+    if not product_data.get("marca") or not product_data.get("modelo"):
+        from .official_scraper import _infer_brand_from_name, _extract_model_from_name
+        if not product_data.get("marca") and nombre:
+            inferred = _infer_brand_from_name(nombre)
+            if inferred:
+                product_data["marca"] = inferred.title()
+        if not product_data.get("modelo") and nombre:
+            model = _extract_model_from_name(nombre, product_data.get("marca") or "")
+            if model:
+                product_data["modelo"] = model
 
     translated = translate_product(product_data)
     modelo_row = modelo or ""
@@ -356,16 +517,33 @@ def run(dry_run: bool = False) -> int:
             translated = None
 
             # ---- Path A: existing data (just push) -------------------------
+            # Only reuse stored data if it has actual characteristics.
+            # Empty characteristics means the previous scrape failed to extract
+            # specs — re-scrape instead of pushing empty data.  Stored data
+            # whose characteristics are JS template placeholders ({{...}}) is
+            # garbage and must be re-scraped too.
             if existing_json:
                 try:
                     parsed = json.loads(existing_json) if isinstance(existing_json, str) else existing_json
                 except (json.JSONDecodeError, TypeError):
                     parsed = None
-                if parsed:
+                stored_valid = False
+                if parsed and parsed.get("caracteristicas"):
+                    stored_chars = parsed["caracteristicas"]
+                    clean_chars = [
+                        c for c in stored_chars
+                        if not is_template_placeholder(str(c.get("nombre", "")))
+                        and not is_template_placeholder(str(c.get("valor", "")))
+                    ]
+                    stored_valid = bool(clean_chars)
+                if stored_valid:
                     product_data = parsed
                     translated = parsed
-                    logger.info("  EXISTING  id=%d  — pushing stored data", pid)
+                    logger.info("  EXISTING  id=%d  — pushing stored data (%d chars)", pid, len(parsed["caracteristicas"]))
                     pipeline_state.add_log(f"Usando datos guardados para id={pid}")
+                elif parsed:
+                    logger.info("  EXISTING  id=%d  — stored data unusable, re-scraping", pid)
+                    pipeline_state.add_log(f"Datos guardados no válidos, re-scrapeando id={pid}")
 
             # ---- Path B: fetch from brand site / AI agent ------------------
             if product_data is None:
@@ -403,6 +581,18 @@ def run(dry_run: bool = False) -> int:
             # ---- Push to PrestaShop ---------------------------------------
             marca_final = (product_data.get("marca") or "").strip() or marca
             modelo_final = (product_data.get("modelo") or "").strip() or modelo
+
+            # Backfill from product name if still empty
+            if not marca_final or not modelo_final:
+                from .official_scraper import _infer_brand_from_name, _extract_model_from_name
+                if not marca_final and nombre:
+                    inferred = _infer_brand_from_name(nombre)
+                    if inferred:
+                        marca_final = inferred.title()
+                if not modelo_final and nombre:
+                    model = _extract_model_from_name(nombre, marca_final)
+                    if model:
+                        modelo_final = model
 
             if not dry_run:
                 if translated and "_score" not in translated:

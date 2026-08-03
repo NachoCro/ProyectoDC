@@ -7,6 +7,7 @@ product characteristics with the default template.
 
 import json
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,31 @@ _BASE = Path(__file__).resolve().parent.parent
 
 _TEMPLATES: dict | None = None
 _MAPPING: dict | None = None
+
+_PLACEHOLDER_RE = re.compile(r"\{\{.*\}\}|\[\[.*\]\]|\$\{.*\}")
+
+
+def _is_placeholder(text: str) -> bool:
+    return bool(_PLACEHOLDER_RE.search(text or ""))
+
+
+def _clean_characteristics(
+    caracteristicas: list[dict],
+) -> list[dict]:
+    """Drop characteristics whose name or value is JS template garbage.
+
+    Samsung and other sites embed Knockout/Angular templates in the DOM
+    (``{{upgrade.yesAttr.text}}`` etc.) that generic scrapers pick up as
+    specs.  These are never valid PrestaShop features.
+    """
+    cleaned: list[dict] = []
+    for ch in caracteristicas:
+        nombre = (ch.get("nombre") or "").strip()
+        valor = (ch.get("valor") or "").strip()
+        if _is_placeholder(nombre) or _is_placeholder(valor):
+            continue
+        cleaned.append({"nombre": nombre, "valor": valor})
+    return cleaned
 
 
 def _load_json(name: str) -> dict:
@@ -72,14 +98,16 @@ def merge_characteristics(
     """
     template = get_template(subcat_name)
     if not template:
-        return proposed_caracteristicas
+        return _clean_characteristics(proposed_caracteristicas)
 
     # Build a lookup of proposed values by lowercased name (first wins)
     proposed_by_name: dict[str, str] = {}
     for ch in proposed_caracteristicas:
         nombre = (ch.get("nombre") or "").strip()
         valor = (ch.get("valor") or "").strip()
-        if nombre and nombre.lower() not in proposed_by_name:
+        if not nombre or _is_placeholder(nombre) or _is_placeholder(valor):
+            continue
+        if nombre.lower() not in proposed_by_name:
             proposed_by_name[nombre.lower()] = valor
 
     merged: list[dict] = []
@@ -99,7 +127,9 @@ def merge_characteristics(
     for ch in proposed_caracteristicas:
         nombre = (ch.get("nombre") or "").strip()
         valor = (ch.get("valor") or "").strip()
-        if nombre and nombre.lower() not in seen:
+        if not nombre or _is_placeholder(nombre) or _is_placeholder(valor):
+            continue
+        if nombre.lower() not in seen:
             seen.add(nombre.lower())
             merged.append({"nombre": nombre, "valor": valor})
 

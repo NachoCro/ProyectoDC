@@ -61,7 +61,8 @@
       </div>
 
       <form method="post" action="{{ url_for('re_sync', pid=product.id_prestashop) }}"
-            onsubmit="return confirm('¿Forzar re-sincronización?')">
+            data-action="re-sync"
+            class="diff-actions__form">
         <button class="btn btn--sync">Re-sincronizar</button>
       </form>
     </div>
@@ -217,7 +218,7 @@
     {# ================================================================ #}
     <div class="diff-actions">
       <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
-            onsubmit="return confirmActivate()"
+            data-action="activate"
             class="diff-actions__form">
         <input type="hidden" name="activate" value="1">
         <button class="btn btn--activate btn--lg">
@@ -230,7 +231,7 @@
       </form>
 
       <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
-            onsubmit="return confirmApproval()"
+            data-action="approve"
             class="diff-actions__form">
         <input type="hidden" name="activate" value="0">
         <button class="btn btn--approve btn--lg">
@@ -243,13 +244,13 @@
       </form>
 
       <form method="post" action="{{ url_for('reject', pid=product.id_prestashop) }}"
-            onsubmit="return confirm('¿Descartar la propuesta? El producto quedará pendiente para una futura re-consulta.')"
+            data-action="reject"
             class="diff-actions__form">
         <button class="btn btn--reject btn--lg">Rechazar propuesta</button>
       </form>
 
       <form method="post" action="{{ url_for('re_sync', pid=product.id_prestashop) }}"
-            onsubmit="return confirm('¿Forzar re-sincronización? Se descartarán los datos actuales.')"
+            data-action="re-sync"
             class="diff-actions__form">
         <button class="btn btn--sync btn--lg">Re-sincronizar</button>
       </form>
@@ -306,6 +307,56 @@ if (scrapeForm) {
       btn.disabled = false;
       btn.textContent = 'Scrapear URL oficial';
     });
+  });
+}
+
+// Approve / reject / re-sync forms: submit via fetch and redirect to the
+// returned URL (server responds with JSON, not a full page).
+var ACTION_CONFIRMS = {
+  activate: confirmActivate,
+  approve: confirmApproval,
+  reject: function() {
+    return confirm('¿Descartar la propuesta? El producto quedará pendiente para una futura re-consulta.');
+  },
+  're-sync': function() {
+    return confirm('¿Forzar re-sincronización? Se descartarán los datos actuales.');
+  }
+};
+
+function submitActionForm(form) {
+  var action = form.getAttribute('data-action');
+  var confirmFn = ACTION_CONFIRMS[action];
+  if (confirmFn && !confirmFn()) return;
+  var btn = form.querySelector('button[type="submit"]');
+  var original = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = 'Procesando...';
+  fetch(form.action, {
+    method: 'POST',
+    body: new FormData(form)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok && data.redirect) {
+      window.location.href = data.redirect;
+    } else {
+      alert('Error: ' + (data.error || 'Error desconocido'));
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  })
+  .catch(function(err) {
+    alert('Error de red: ' + err);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  });
+}
+
+var actionForms = document.querySelectorAll('form.diff-actions__form');
+for (var i = 0; i < actionForms.length; i++) {
+  actionForms[i].addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitActionForm(this);
   });
 }
 </script>

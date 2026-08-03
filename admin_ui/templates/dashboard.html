@@ -15,36 +15,80 @@
           <span class="stat-box__value">{{ listos }}</span>
           <span class="stat-box__label">Listos</span>
         </div>
+        <div class="stat-box stat-box--activate">
+          <span class="stat-box__value">{{ para_activar }}</span>
+          <span class="stat-box__label">Para activar</span>
+        </div>
+        <div class="stat-box stat-box--verified">
+          <span class="stat-box__value">{{ activos }}</span>
+          <span class="stat-box__label">Activos verificados</span>
+        </div>
       </div>
 
-      <div class="dash-center">
-        <form method="post" action="{{ url_for('run_pipeline') }}" id="pipelineForm" class="play-wrap">
-          <button type="submit" class="btn-play" id="playBtn"
-                  {% if pipeline_running %}disabled{% endif %}
-                  title="Ejecutar pipeline completo">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          </button>
-          <span class="play-label" id="playLabel">
-            {% if pipeline_running %}Pipeline en ejecución...{% else %}Ejecutar pipeline{% endif %}
+      <div class="daemon-panel">
+        <div class="daemon-panel__header">
+          <span class="daemon-panel__title">Daemon</span>
+          <span class="daemon-panel__status {% if daemon.running %}daemon-panel__status--running{% else %}daemon-panel__status--stopped{% endif %}"
+                id="daemonStatus">
+            {% if daemon.running %}Activo{% else %}Detenido{% endif %}
           </span>
-          <div class="play-bar {% if pipeline_running %}play-bar--active{% endif %}" id="playBar">
-            <div class="play-bar__fill"></div>
+        </div>
+
+        <div class="daemon-panel__info" id="daemonInfo">
+          {% if daemon.running %}
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Ciclo</span>
+            <span class="daemon-info-value" id="daemonCycle">{{ daemon.cycle }}</span>
           </div>
-        </form>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Intervalo</span>
+            <span class="daemon-info-value" id="daemonInterval">{{ daemon.interval }}s</span>
+          </div>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Validar inactivos</span>
+            <span class="daemon-info-value" id="daemonCheckInactive">{{ 'Sí' if daemon.check_inactive else 'No' }}</span>
+          </div>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Fase</span>
+            <span class="daemon-info-value daemon-info-value--phase" id="daemonPhase">{{ daemon.phase }}</span>
+          </div>
+          {% if daemon.last_result %}
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Ultima verificacion</span>
+            <span class="daemon-info-value" id="daemonLastResult">
+              {{ daemon.last_result.total }} productos, {{ daemon.last_result.complete }} completos
+            </span>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
 
-        <form method="post" action="{{ url_for('extract') }}" id="extractForm">
-          <button type="submit" class="btn btn--lg"
-                  {% if pipeline_running %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
-            Extraer productos
-          </button>
-        </form>
-
-        <form method="post" action="{{ url_for('check_active') }}" id="checkActiveForm">
-          <button type="submit" class="btn btn--lg"
-                  {% if pipeline_running %}disabled style="opacity:.5;cursor:not-allowed"{% endif %}>
-            Verificar productos activos
-          </button>
-        </form>
+        <div class="daemon-panel__controls">
+          {% if daemon.running %}
+          <form method="post" action="{{ url_for('stop_daemon') }}" id="stopDaemonForm" class="daemon-form">
+            <input type="hidden" name="interval" value="{{ daemon.interval }}">
+            <button type="submit" class="btn btn--danger btn--daemon" id="stopBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+              Detener daemon
+            </button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('start_daemon') }}" id="startDaemonForm" class="daemon-form">
+            <div class="daemon-form__row">
+              <label for="interval">Intervalo (seg)</label>
+              <input type="number" id="interval" name="interval" value="{{ daemon.interval or 300 }}" min="10" max="86400" class="input input--sm">
+            </div>
+            <label class="daemon-form__row daemon-form__check">
+              <input type="checkbox" name="check_inactive" value="1">
+              Validar productos inactivos (listos para activar)
+            </label>
+            <button type="submit" class="btn btn--primary btn--daemon" id="startBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Iniciar daemon
+            </button>
+          </form>
+          {% endif %}
+        </div>
       </div>
     </div>
 
@@ -54,13 +98,15 @@
           <span class="terminal__dot terminal__dot--red"></span>
           <span class="terminal__dot terminal__dot--yellow"></span>
           <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">Pipeline</span>
+          <span class="terminal__title">Daemon</span>
         </div>
         <div class="terminal__body" id="terminalBody">
-          {% if pipeline_running %}
-            <div class="terminal__line terminal__line--info">Pipeline en ejecución...</div>
+          {% if daemon.running and daemon.logs %}
+            {% for log in daemon.logs %}
+            <div class="terminal__line {% if 'ERROR' in log.msg %}terminal__line--error{% elif 'completado' in log.msg %}terminal__line--ok{% elif 'Fase' in log.msg %}terminal__line--info{% endif %}">{{ log.msg }}</div>
+            {% endfor %}
           {% else %}
-            <div class="terminal__line terminal__line--idle">Esperando pipeline...</div>
+            <div class="terminal__line terminal__line--idle">Daemon no activo</div>
           {% endif %}
         </div>
       </div>
@@ -72,49 +118,61 @@
 (function() {
   var terminalBody = document.getElementById('terminalBody');
   var pollTimer = null;
-  var isRunning = {{ pipeline_running|lower }};
-  var btn = document.getElementById('playBtn');
-  var bar = document.getElementById('playBar');
-  var label = document.getElementById('playLabel');
+  var isDaemonRunning = {{ daemon.running|lower }};
 
-  function resetPlay() {
-    btn.disabled = false;
-    bar.classList.remove('play-bar--active');
-    label.textContent = 'Ejecutar pipeline';
-  }
-
-  function pollStatus() {
+  function pollDaemonStatus() {
     clearTimeout(pollTimer);
-    fetch('/api/pipeline-status')
+    fetch('/api/daemon-status')
       .then(function(r) { return r.json(); })
       .then(function(state) {
         renderTerminal(state);
+        updateDaemonInfo(state);
         if (state.running) {
-          pollTimer = setTimeout(pollStatus, 1500);
-        } else if (isRunning && !state.finished_at) {
-          pollTimer = setTimeout(pollStatus, 800);
-        } else if (isRunning && state.finished_at) {
-          isRunning = false;
-          resetPlay();
+          pollTimer = setTimeout(pollDaemonStatus, 2000);
         }
       })
       .catch(function() {
-        if (isRunning) pollTimer = setTimeout(pollStatus, 2000);
+        if (isDaemonRunning) pollTimer = setTimeout(pollDaemonStatus, 3000);
       });
+  }
+
+  function updateDaemonInfo(state) {
+    var statusEl = document.getElementById('daemonStatus');
+    if (statusEl) {
+      statusEl.textContent = state.running ? 'Activo' : 'Detenido';
+      statusEl.className = 'daemon-panel__status ' + (state.running ? 'daemon-panel__status--running' : 'daemon-panel__status--stopped');
+    }
+
+    var cycleEl = document.getElementById('daemonCycle');
+    if (cycleEl) cycleEl.textContent = state.cycle;
+
+    var intervalEl = document.getElementById('daemonInterval');
+    if (intervalEl) intervalEl.textContent = state.interval + 's';
+
+    var checkInactiveEl = document.getElementById('daemonCheckInactive');
+    if (checkInactiveEl) checkInactiveEl.textContent = state.check_inactive ? 'Sí' : 'No';
+
+    var phaseEl = document.getElementById('daemonPhase');
+    if (phaseEl) phaseEl.textContent = state.phase || '-';
+
+    var lastEl = document.getElementById('daemonLastResult');
+    if (lastEl && state.last_result) {
+      lastEl.textContent = state.last_result.total + ' productos, ' + state.last_result.complete + ' completos';
+    }
   }
 
   function renderTerminal(state) {
     if (!state || !state.logs || state.logs.length === 0) {
-      terminalBody.innerHTML = '<div class="terminal__line terminal__line--idle">Esperando pipeline...</div>';
+      terminalBody.innerHTML = '<div class="terminal__line terminal__line--idle">Daemon no activo</div>';
       return;
     }
     var html = '';
     for (var i = 0; i < state.logs.length; i++) {
       var log = state.logs[i];
       var cls = 'terminal__line';
-      if (log.msg.indexOf('COMPLETADO') !== -1) cls += ' terminal__line--ok';
-      else if (log.msg.indexOf('FALLO') !== -1 || log.msg.indexOf('ERROR') !== -1) cls += ' terminal__line--error';
-      else if (log.msg.indexOf('Iniciando') !== -1) cls += ' terminal__line--info';
+      if (log.msg.indexOf('ERROR') !== -1) cls += ' terminal__line--error';
+      else if (log.msg.indexOf('completado') !== -1 || log.msg.indexOf('completados') !== -1) cls += ' terminal__line--ok';
+      else if (log.msg.indexOf('Fase') !== -1 || log.msg.indexOf('Daemon') !== -1) cls += ' terminal__line--info';
       html += '<div class="' + cls + '">' + escHtml(log.msg) + '</div>';
     }
     terminalBody.innerHTML = html;
@@ -127,85 +185,62 @@
     return d.innerHTML;
   }
 
-  if (isRunning) {
-    pollStatus();
-  }
-
-  var form = document.getElementById('pipelineForm');
-  if (form) {
-    form.addEventListener('submit', function(e) {
+  // Start/Stop form handlers
+  var startForm = document.getElementById('startDaemonForm');
+  if (startForm) {
+    startForm.addEventListener('submit', function(e) {
       e.preventDefault();
+      var btn = document.getElementById('startBtn');
       btn.disabled = true;
-      bar.classList.add('play-bar--active');
-      label.textContent = 'Procesando...';
-      isRunning = true;
-      fetch(form.action, { method: 'POST' })
+      btn.textContent = 'Iniciando...';
+      fetch(startForm.action, { method: 'POST', body: new FormData(startForm) })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            pollStatus();
+            isDaemonRunning = true;
+            pollDaemonStatus();
+            setTimeout(function() { location.reload(); }, 1500);
           } else {
             alert('Error: ' + (data.error || 'Error desconocido'));
-            isRunning = false;
-            resetPlay();
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Iniciar daemon';
           }
         })
         .catch(function(err) {
           alert('Error de red: ' + err);
-          isRunning = false;
-          resetPlay();
+          btn.disabled = false;
         });
     });
   }
 
-  var extractForm = document.getElementById('extractForm');
-  if (extractForm) {
-    extractForm.addEventListener('submit', function(e) {
+  var stopForm = document.getElementById('stopDaemonForm');
+  if (stopForm) {
+    stopForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      var extractBtn = extractForm.querySelector('button[type="submit"]');
-      extractBtn.disabled = true;
-      extractBtn.style.opacity = '0.5';
-      fetch(extractForm.action, { method: 'POST' })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.ok) { window.location.href = data.redirect; }
-          else { alert('Error: ' + (data.error || 'Error desconocido')); extractBtn.disabled = false; extractBtn.style.opacity = ''; }
-        })
-        .catch(function(err) { alert('Error de red: ' + err); extractBtn.disabled = false; extractBtn.style.opacity = ''; });
-    });
-  }
-
-  var checkActiveForm = document.getElementById('checkActiveForm');
-  if (checkActiveForm) {
-    checkActiveForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      var checkBtn = checkActiveForm.querySelector('button[type="submit"]');
-      checkBtn.disabled = true;
-      checkBtn.style.opacity = '0.5';
-      isRunning = true;
-      bar.classList.add('play-bar--active');
-      label.textContent = 'Verificando productos activos...';
-      fetch(checkActiveForm.action, { method: 'POST' })
+      var btn = document.getElementById('stopBtn');
+      btn.disabled = true;
+      btn.textContent = 'Deteniendo...';
+      fetch(stopForm.action, { method: 'POST' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {
-            pollStatus();
+            isDaemonRunning = false;
+            clearTimeout(pollTimer);
+            setTimeout(function() { location.reload(); }, 1500);
           } else {
             alert('Error: ' + (data.error || 'Error desconocido'));
-            isRunning = false;
-            resetPlay();
-            checkBtn.disabled = false;
-            checkBtn.style.opacity = '';
+            btn.disabled = false;
           }
         })
         .catch(function(err) {
           alert('Error de red: ' + err);
-          isRunning = false;
-          resetPlay();
-          checkBtn.disabled = false;
-          checkBtn.style.opacity = '';
+          btn.disabled = false;
         });
     });
+  }
+
+  if (isDaemonRunning) {
+    pollDaemonStatus();
   }
 })();
 </script>
