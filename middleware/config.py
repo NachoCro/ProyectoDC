@@ -13,6 +13,8 @@ DEFAULTS = {
     "BATCH_SIZE": "10",
     "API_SLEEP": "2",
     "DAEMON_INTERVAL": "300",  # seconds between checks (5 min default)
+    "PS_COMPAT_81": "1",  # PrestaShop 8.1 PUT workarounds (strip attrs, drop assocs, force state)
+    "PS_CREATE_FEATURES": "0",  # 1 = create missing features/values in PS; 0 = reuse existing only
 }
 
 # ── DB-backed config (overrides .env) ──────────────────────────────────

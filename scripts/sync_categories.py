@@ -9,10 +9,11 @@ import logging
 import sys
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import SubElement
+
 sys.path.insert(0, '.')
-from middleware.db import get_connection
 from admin_ui.prestashop import AdminPrestashopClient
-from middleware.config import PRESTASHOP_API_URL, PRESTASHOP_API_KEY
+from middleware.config import PRESTASHOP_API_URL
+from middleware.db import get_connection
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('sync_categories')
@@ -37,10 +38,16 @@ resp = client._session.get(
 )
 root = ET.fromstring(resp.content)
 for cat in root.findall('.//category'):
-    cid = int(cat.findtext('id'))
-    parent = int(cat.findtext('id_parent'))
+    cid = int(cat.findtext('id') or 0)
+    parent = int(cat.findtext('id_parent') or 0)
     name = cat.findtext('name/language')
     existing[name] = {'id': cid, 'parent': parent}
+
+def slugify(name):
+    slug = name.lower()
+    for char, repl in (("ñ", "n"), ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")):
+        slug = slug.replace(char, repl)
+    return slug.replace(" ", "-")
 
 def create_category(name, parent_id):
     if name in existing:
@@ -52,7 +59,7 @@ def create_category(name, parent_id):
     <id_parent>{parent_id}</id_parent>
     <active>1</active>
     <name><language id="1">{name}</language></name>
-    <link_rewrite><language id="1">{name.lower().replace(' ', '-').replace('ñ','n').replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u')}</language></link_rewrite>
+    <link_rewrite><language id="1">{slugify(name)}</language></link_rewrite>
     <description><language id="1"></language></description>
   </category>
 </prestashop>"""

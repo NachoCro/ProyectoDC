@@ -17,11 +17,10 @@ import argparse
 import logging
 import os
 import signal
-import sys
 import time
 
-from middleware.config import DAEMON_INTERVAL
 from middleware import daemon_state
+from middleware.config import DAEMON_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +44,8 @@ def _setup_logging(verbose: bool) -> None:
 
 def _run_initial_pipeline(dry_run: bool) -> None:
     """Ejecuta extracción + enriquecimiento al iniciar el daemon."""
-    from middleware.extract import run as run_extraction
     from middleware.enrich import run as run_enrich
+    from middleware.extract import run as run_extraction
 
     logger.info("=== Fase inicial: Extracción + Enriquecimiento ===")
 
@@ -93,7 +92,7 @@ def run_daemon(interval: int, dry_run: bool, check_inactive: bool = False) -> No
         f"Verificación continua cada {interval}s"
     )
 
-    while _running:
+    while _running and not daemon_state.stop_requested():
         daemon_state.set_phase("verification")
 
         try:
@@ -132,11 +131,11 @@ def run_daemon(interval: int, dry_run: bool, check_inactive: bool = False) -> No
             daemon_state.log(f"ERROR: {exc}")
 
         # Wait for next cycle
-        if _running:
+        if _running and not daemon_state.stop_requested():
             daemon_state.set_phase("idle")
             logger.info("Waiting %d seconds until next check...", interval)
             for _ in range(interval):
-                if not _running:
+                if not _running or daemon_state.stop_requested():
                     break
                 time.sleep(1)
 
@@ -175,9 +174,10 @@ def main() -> None:
 
     _setup_logging(args.verbose)
 
-    # Handle graceful shutdown
+    # Handle graceful shutdown (SIGTERM is POSIX-only)
     signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _signal_handler)
 
     run_daemon(interval=args.interval, dry_run=args.dry_run, check_inactive=args.check_inactive)
 

@@ -197,6 +197,7 @@ h3 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); }
   gap: 24px;
   align-items: start;
 }
+.dash-layout > * { min-width: 0; }
 .dash-left {
   display: flex;
   flex-direction: column;
@@ -209,7 +210,7 @@ h3 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); }
 /* ---- stat boxes --------------------------------------------------- */
 .dash-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
 }
 .stat-box {
@@ -956,20 +957,179 @@ h3 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); }
 .nav__toggle:hover { background: var(--bg); color: var(--text); }
 [data-theme="dark"] .nav__toggle { color: #fbbf24; }
 
+/* ---- mobile bottom tab bar (hidden on desktop) -------------------- */
+.nav-bottom { display: none; }
+
 /* ---- responsive ---------------------------------------------------- */
 @media (max-width: 768px) {
-  .container { padding: 16px; }
-  .nav { padding: 0 12px; gap: 8px; }
-  .nav__brand { margin-right: 12px; font-size: 14px; }
-  .nav__links { gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .nav__links a { font-size: 13px; white-space: nowrap; padding: 0 8px; }
+  body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .container { padding: 16px 14px 24px; }
 
+  .nav { padding: 0 14px; height: 52px; }
+  .nav__brand { margin-right: 0; font-size: 15px; }
+  .nav__links { display: none; }
+  .nav__toggle { margin-left: auto; }
+
+  /* bottom tab bar */
+  .nav-bottom {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-bottom a {
+    flex: 1;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: var(--muted);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-bottom a svg { width: 21px; height: 21px; }
+  .nav-bottom a.active { color: var(--blue); }
+
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  .meta { margin: -8px 0 14px; }
+
+  /* ---- tables -> stacked cards ------------------------------------- */
+  .table-wrap { overflow: visible; }
+  .table thead { display: none; }
+  .table { background: transparent; border: none; }
+  .table tbody { display: flex; flex-direction: column; gap: 14px; }
+  .table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 1 1 40%;
+    border: none;
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .table td[data-label=""]::before { display: none; }
+
+  /* products: thumb + name on first row, action button full width */
+  .table--products tr { flex-wrap: wrap; }
+  .table--products td { flex: 1 1 40%; justify-content: flex-start; }
+  .table--products .cell--thumb { flex: 0 0 52px; }
+  .table--products .thumb { width: 52px; height: 52px; }
+  .table--products .cell--name {
+    flex: 1 1 calc(100% - 64px);
+    max-width: none;
+    white-space: normal;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .table--products td:last-child { flex: 1 1 100%; justify-content: flex-end; }
+  .table--products td:last-child .btn { width: 100%; text-align: center; }
+  .table--products td code { font-size: 12px; }
+
+  /* audit: detail cell wraps onto its own row */
+  .table--audit .cell--mono {
+    flex: 1 1 100%;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* ---- diff page ---------------------------------------------------- */
+  .diff-header__title { font-size: 18px; }
+  .diff-header__meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .diff-compare__header { display: none; }
+  .diff-compare__table, .diff-compare__table tbody { display: block; }
+  .diff-compare__table tr {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .diff-compare__table tr:not(:last-child) { border-bottom: 1px solid var(--border); }
+  .diff-compare__table .dc__label {
+    display: block;
+    width: auto;
+    padding: 0 0 6px;
+    margin-bottom: 6px;
+    background: transparent;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-compare__table .dc {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    border-left: none;
+    background: transparent;
+    font-size: 14px;
+  }
+  .diff-compare__table .dc::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 2px;
+  }
+  .diff-compare__table .dc--same { justify-content: flex-start; }
+  .diff-compare__table .dc--same::before { content: none; }
+
+  .diff-manual-url__form { flex-direction: column; }
+  .diff-manual-url__input { width: 100%; }
+  .btn--scrape { width: 100%; text-align: center; }
+
+  .diff-actions { grid-template-columns: 1fr; gap: 14px; }
+  .diff-actions .btn--lg {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 15px;
+    text-align: center;
+  }
+
+  /* ---- misc --------------------------------------------------------- */
   .dash-layout { grid-template-columns: 1fr; }
-  .dash-right { min-height: 300px; }
-  .dash-stats { grid-template-columns: 1fr 1fr; max-width: 100%; }
-  .stat-box { padding: 16px 14px; }
+  .dash-right { min-height: 260px; }
+  .stat-box { padding: 18px 14px; }
   .stat-box__value { font-size: 28px; }
 
+  .terminal { height: 260px; }
   .terminal__body { font-size: 10px; min-height: 140px; padding: 8px; }
   .terminal__header { padding: 5px 8px; }
   .terminal__dot { width: 8px; height: 8px; }
@@ -978,30 +1138,34 @@ h3 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); }
   .dash-center .play-wrap { width: 100%; }
   .dash-center .btn--lg { width: 100%; }
 
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { min-width: 600px; }
+  .tabs { padding-top: 2px; }
+  .tab { padding: 12px 16px; font-size: 13px; }
 
-  .diff-actions { grid-template-columns: 1fr; }
-  .diff-compare__header { grid-template-columns: 30% 1fr 1fr; }
-  .diff-image { flex-direction: column; align-items: flex-start; }
-  .diff-image__preview { width: 140px; height: 140px; }
+  /* bigger touch targets on all buttons */
+  .btn { padding: 12px 16px; font-size: 14px; }
+  .btn--sm { padding: 10px 14px; font-size: 13px; }
+  .daemon-form__row { flex-wrap: wrap; }
 
   .brands-form__row { flex-direction: column; }
   .brand-row { flex-wrap: wrap; }
 }
 
 @media (max-width: 480px) {
-  .container { padding: 12px; }
-  .nav { padding: 0 8px; }
-  .nav__brand { font-size: 13px; margin-right: 8px; }
-  .nav__links a { font-size: 12px; padding: 0 6px; }
+  .container { padding: 14px 12px 20px; }
+  .nav { padding: 0 10px; }
+  .nav__brand { font-size: 14px; }
 
   h1 { font-size: 18px; }
   .stat-box__value { font-size: 24px; }
   .stat-box__label { font-size: 11px; }
 
-  .terminal__body { font-size: 9px; min-height: 120px; padding: 6px; height: 250px; }
+  .terminal__body { font-size: 9px; min-height: 120px; padding: 6px; height: 220px; }
   .terminal__line { font-size: 9px; }
+
+  .diff-header__meta { grid-template-columns: 1fr; }
+  .diff-compare__table .dc { font-size: 13px; }
+  .diff-image { flex-direction: column; align-items: flex-start; }
+  .diff-image__preview { width: 140px; height: 140px; }
 
   .brands-form__row { flex-direction: column; }
   .brands-list__header { flex-direction: column; gap: 10px; align-items: stretch; }

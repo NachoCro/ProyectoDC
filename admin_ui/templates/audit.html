@@ -15,7 +15,7 @@
 </div>
 
 <div class="table-wrap">
-<table class="table">
+<table class="table table--audit">
   <thead>
     <tr>
       <th>Fecha / Hora</th>
@@ -28,12 +28,12 @@
   <tbody>
   {% for e in entries %}
     <tr>
-      <td>{{ e.timestamp }}</td>
-      <td>
+      <td data-label="Fecha">{{ e.timestamp }}</td>
+      <td data-label="Producto">
         <a href="{{ url_for('diff', pid=e.id_producto) }}">#{{ e.id_producto }}</a>
       </td>
-      <td>{{ e.actor }}</td>
-      <td>
+      <td data-label="Usuario">{{ e.actor }}</td>
+      <td data-label="Acción">
         {% if e.accion == 'aprobado' %}
           <span class="badge badge--ok">{{ e.accion }}</span>
         {% elif e.accion == 'error' %}
@@ -44,7 +44,7 @@
           <span class="badge badge--muted">{{ e.accion }}</span>
         {% endif %}
       </td>
-      <td class="cell--mono">{{ e.detalle or '' }}</td>
+      <td class="cell--mono" data-label="Detalle">{{ e.detalle or '' }}</td>
     </tr>
   {% else %}
     <tr><td colspan="5" class="cell--empty">Sin registros</td></tr>

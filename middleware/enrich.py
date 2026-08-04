@@ -15,14 +15,14 @@ translation).
 import json
 import logging
 
+from . import pipeline_state
+from .characteristics import merge_characteristics
 from .config import BATCH_SIZE
 from .db import get_connection, mark_not_found, write_eav
-from .embedding import embedding_to_bytes, generate_embedding, score_match
-from .translate import translate_product
-from .characteristics import merge_characteristics
-from .spec_extractors import is_template_placeholder
 from .descriptions import get_description
-from . import pipeline_state
+from .embedding import embedding_to_bytes, generate_embedding, score_match
+from .spec_extractors import is_template_placeholder
+from .translate import translate_product
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,6 @@ def _fetch_and_prepare(
     ``(None, None, '')`` on failure.
     """
     product_data = None
-    was_not_found = False
 
     # ── 0. Brand site search (official site → product page → scrape) ──────
     if marca and nombre and not dry_run:
@@ -325,7 +324,7 @@ def _fetch_and_prepare(
         # Use marca if available, otherwise try with just the product name
         ai_marca = marca or ""
         logger.info("  AI_AGENT  id=%d  trying web search + extraction (marca=%r)", pid, ai_marca)
-        pipeline_state.add_log(f"Buscando con AI agent web search...")
+        pipeline_state.add_log("Buscando con AI agent web search...")
         ai_data = enrich_with_ai(ai_marca, nombre)
         if ai_data is not None:
             ai_chars = len(ai_data.get("caracteristicas") or [])
@@ -340,7 +339,11 @@ def _fetch_and_prepare(
                 ai_valid = False
             elif not marca and ai_chars < MIN_CHARS_WITHOUT_MARCA:
                 ai_valid = False
-                logger.info("  AI_AGENT  id=%d  data rejected — too few characteristics (%d) without brand", pid, ai_chars)
+                logger.info(
+                    "  AI_AGENT  id=%d  data rejected — too few characteristics (%d) without brand",
+                    pid,
+                    ai_chars,
+                )
                 pipeline_state.add_log(f"AI agent: solo {ai_chars} características, datos de página de reventa")
             if not ai_valid:
                 logger.warning("  AI_AGENT  id=%d  data rejected — wrong product", pid)
@@ -348,7 +351,7 @@ def _fetch_and_prepare(
             else:
                 # Keep whichever source has more characteristics
                 if brand_data_low:
-                    brand_chars = len(product_data.get("caracteristicas") or [])
+                    brand_chars = len((product_data or {}).get("caracteristicas") or [])
                     if ai_chars > brand_chars:
                         logger.info(
                             "  AI_AGENT  id=%d  replacing brand site result (%d > %d chars)",
@@ -366,7 +369,9 @@ def _fetch_and_prepare(
     # ── 2. Name-only search (no brand/MPN, but has a product name) ─────────
     if not product_data and nombre and not dry_run:
         from .official_scraper import (
-            _infer_brand_from_name, _search_brand_site, scrape_from_direct_url,
+            _infer_brand_from_name,
+            _search_brand_site,
+            scrape_from_direct_url,
         )
 
         inferred_brand = _infer_brand_from_name(nombre)
@@ -399,7 +404,7 @@ def _fetch_and_prepare(
                     "  NAME_SEARCH  id=%d  brand site failed, trying AI agent with inferred brand=%r",
                     pid, inferred_brand,
                 )
-                pipeline_state.add_log(f"Brand site no encontrado, buscando con AI agent...")
+                pipeline_state.add_log("Brand site no encontrado, buscando con AI agent...")
                 product_data = enrich_with_ai(inferred_brand, nombre)
                 if product_data is not None:
                     if not _validate_scraped_data(product_data, inferred_brand, nombre, pid):
@@ -421,18 +426,18 @@ def _fetch_and_prepare(
 
     if product_data is None:
         if not (marca or nombre):
-            pipeline_state.add_log(f"Sin datos — sin marca ni nombre, marcando not_found")
+            pipeline_state.add_log("Sin datos — sin marca ni nombre, marcando not_found")
             logger.info("  SKIP  id=%d  (no brand, no name) — marking not found", pid)
             if not dry_run:
                 mark_not_found(pid)
         else:
-            pipeline_state.add_log(f"Reintentar después — datos insuficientes")
+            pipeline_state.add_log("Reintentar después — datos insuficientes")
             logger.warning("  RETRY-LATER  id=%d  (brand=%s name=%s)", pid, marca, nombre)
         return None, None, ""
 
     # Backfill marca/modelo from product name if scraper didn't find them
     if not product_data.get("marca") or not product_data.get("modelo"):
-        from .official_scraper import _infer_brand_from_name, _extract_model_from_name
+        from .official_scraper import _extract_model_from_name, _infer_brand_from_name
         if not product_data.get("marca") and nombre:
             inferred = _infer_brand_from_name(nombre)
             if inferred:
@@ -485,7 +490,7 @@ def run(dry_run: bool = False) -> int:
     try:
         rows = conn.execute(
             """SELECT p.id_prestashop, p.ean, p.mpn, p.marca, p.modelo, p.nombre,
-                      p.icecat_json, p.id_subcategoria,
+                      p.proposal_json, p.id_subcategoria,
                       COALESCE(s.nombre_subcategoria, '') AS subcat_name
                FROM productos p
                LEFT JOIN subcategorias s ON p.id_subcategoria = s.id_subcategoria
@@ -512,7 +517,7 @@ def run(dry_run: bool = False) -> int:
 
             pipeline_state.update(i, pid, nombre)
 
-            existing_json = row["icecat_json"]
+            existing_json = row["proposal_json"]
             product_data = None
             translated = None
 
@@ -539,7 +544,11 @@ def run(dry_run: bool = False) -> int:
                 if stored_valid:
                     product_data = parsed
                     translated = parsed
-                    logger.info("  EXISTING  id=%d  — pushing stored data (%d chars)", pid, len(parsed["caracteristicas"]))
+                    logger.info(
+                        "  EXISTING  id=%d  — pushing stored data (%d chars)",
+                        pid,
+                        len(parsed["caracteristicas"]),
+                    )
                     pipeline_state.add_log(f"Usando datos guardados para id={pid}")
                 elif parsed:
                     logger.info("  EXISTING  id=%d  — stored data unusable, re-scraping", pid)
@@ -561,7 +570,7 @@ def run(dry_run: bool = False) -> int:
 
                     conn.execute(
                         """UPDATE productos
-                           SET icecat_json = ?,
+                           SET proposal_json = ?,
                                vector_descriptivo = ?,
                                marca = ?,
                                modelo = ?,
@@ -584,7 +593,7 @@ def run(dry_run: bool = False) -> int:
 
             # Backfill from product name if still empty
             if not marca_final or not modelo_final:
-                from .official_scraper import _infer_brand_from_name, _extract_model_from_name
+                from .official_scraper import _extract_model_from_name, _infer_brand_from_name
                 if not marca_final and nombre:
                     inferred = _infer_brand_from_name(nombre)
                     if inferred:

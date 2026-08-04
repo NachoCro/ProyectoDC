@@ -21,6 +21,7 @@ _KEYS = [
     "daemon_last_check_at",
     "daemon_last_result",
     "daemon_logs",
+    "daemon_stop",
 ]
 
 _DEFAULTS = {
@@ -35,6 +36,7 @@ _DEFAULTS = {
     "daemon_last_check_at": "",
     "daemon_last_result": "",
     "daemon_logs": "[]",
+    "daemon_stop": "0",
 }
 
 
@@ -88,10 +90,26 @@ def start(interval: int, dry_run: bool, check_inactive: bool = False) -> None:
     _set("daemon_last_check_at", "")
     _set("daemon_last_result", "")
     _set("daemon_logs", "[]")
+    _set("daemon_stop", "0")
     _append_log(
         f"Daemon iniciado — intervalo {interval}s"
         + (" — validando inactivos" if check_inactive else "")
     )
+
+
+def request_stop() -> None:
+    """Ask the daemon to stop gracefully (portable, SQLite-based).
+
+    Works on any OS: the daemon polls this flag each second during its
+    idle wait and exits without needing POSIX signals.
+    """
+    _set("daemon_stop", "1")
+    _append_log("Solicitud de detención recibida")
+
+
+def stop_requested() -> bool:
+    """Whether a stop has been requested (polled by the daemon loop)."""
+    return _get("daemon_stop") == "1"
 
 
 def set_pid(pid: int) -> None:
@@ -126,6 +144,7 @@ def stop() -> None:
     _set("daemon_running", "0")
     _set("daemon_phase", "")
     _set("daemon_pid", "")
+    _set("daemon_stop", "0")
     _append_log("Daemon detenido")
 
 

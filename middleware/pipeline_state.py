@@ -3,9 +3,10 @@
 import threading
 import time
 from collections import deque
+from typing import Any
 
 _lock = threading.Lock()
-_state = {
+_state: dict[str, Any] = {
     "running": False,
     "current": 0,
     "total": 0,
@@ -38,7 +39,8 @@ def update(current: int, pid=None, product_name: str = "") -> None:
         _state["pid"] = pid
         _state["product_name"] = product_name[:80]
         if pid:
-            _state["logs"].append({"t": time.time(), "msg": f"[{current}/{_state['total']}] id={pid} {product_name[:60]}"})
+            msg = f"[{current}/{_state['total']}] id={pid} {product_name[:60]}"
+            _state["logs"].append({"t": time.time(), "msg": msg})
 
 
 def add_log(msg: str) -> None:

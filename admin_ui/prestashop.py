@@ -1,18 +1,32 @@
 """Extended PrestaShop client with write support for Admin UI."""
 
 import logging
+import re
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
+from difflib import SequenceMatcher
 from xml.etree.ElementTree import Element, SubElement
 
 import requests
 
+from middleware.config import API_SLEEP, get_config
 from middleware.prestashop import PrestashopClient, PrestashopError
-from middleware.config import API_SLEEP
 
 logger = logging.getLogger(__name__)
 
 LANG_ID = "1"  # default language ID
+
+
+def ps81_workarounds_enabled() -> bool:
+    """Whether PrestaShop 8.1 PUT workarounds are enabled.
+
+    PrestaShop 8.1 rejects PUT bodies that contain GET-returned attributes
+    (``xlink:href``, ``nodeType``), image/combination associations, or leave
+    ``state=0``.  Set ``PS_COMPAT_81=0`` in config to disable these
+    sanitizations for other PrestaShop versions.
+    """
+    return get_config("PS_COMPAT_81", "1") == "1"
 
 # Fields returned by GET that PrestaShop rejects on PUT
 _READ_ONLY_FIELDS = {
@@ -70,6 +84,55 @@ def _strip_prestashop_attrs(root: ET.Element) -> None:
                 el.attrib["id"] = lang_id
         else:
             el.attrib.clear()
+
+
+# ======================================================================
+# fuzzy matching for existing features/values
+# ======================================================================
+
+def _normalize_name(value: str) -> str:
+    """Lowercase, strip accents and collapse non-alphanumerics to spaces."""
+    value = unicodedata.normalize("NFKD", value or "")
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _name_similarity(a: str, b: str) -> float:
+    """Similarity in [0, 1] between two characteristic/feature names.
+
+    Exact normalized match → 1.0.  Otherwise SequenceMatcher ratio, with a
+    0.9 bonus when one is a whole-word substring of the other (both length
+    ≥ 4) — this maps e.g. ``Resolución`` → ``Resolución de pantalla``.
+    """
+    na, nb = _normalize_name(a), _normalize_name(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    ratio = SequenceMatcher(None, na, nb).ratio()
+    if len(na) >= 4 and len(nb) >= 4 and (na in nb or nb in na):
+        return max(ratio, 0.9)
+    return ratio
+
+
+def _best_fuzzy_match(query: str, candidates: list[tuple[str, int]], threshold: float = 0.85):
+    """Return ``(id, matched_name, score)`` for the best candidate ≥ threshold.
+
+    ``candidates`` is a list of ``(name, id)``.  Returns ``(None, None, 0.0)``
+    when nothing reaches the threshold.
+    """
+    best_id = None
+    best_name = None
+    best_score = 0.0
+    for name, cid in candidates:
+        score = _name_similarity(query, name)
+        if score > best_score:
+            best_score = score
+            best_id = cid
+            best_name = name
+    if best_id is not None and best_score >= threshold:
+        return best_id, best_name, best_score
+    return None, None, 0.0
 
 
 class AdminPrestashopClient(PrestashopClient):
@@ -210,8 +273,8 @@ class AdminPrestashopClient(PrestashopClient):
                 cid = cat_item.findtext("id")
                 if cid:
                     existing_ids.add(cid)
-            for cid in category_ids:
-                cid_str = str(cid)
+            for cat_id in category_ids:
+                cid_str = str(cat_id)
                 if cid_str not in existing_ids:
                     cat_item = SubElement(cats_el, "category")
                     id_el = SubElement(cat_item, "id")
@@ -222,19 +285,20 @@ class AdminPrestashopClient(PrestashopClient):
             if category_ids:
                 self._set_field(product_el, "id_category_default", str(category_ids[0]))
 
-        # Force visibility + indexing + state (prevents invisible products)
-        self._set_field(product_el, "visibility", "both")
-        self._set_field(product_el, "indexed", "1")
-        self._set_field(product_el, "state", "1")
+        # PrestaShop 8.1: force visibility + indexing + state (prevents invisible products)
+        if ps81_workarounds_enabled():
+            self._set_field(product_el, "visibility", "both")
+            self._set_field(product_el, "indexed", "1")
+            self._set_field(product_el, "state", "1")
 
-        # Strip associations down to only product_features + categories.
-        # PrestaShop 8.1 rejects PUTs that include images, combinations,
-        # stock_availables, etc. inside <associations>.
-        assoc_el = product_el.find("associations")
-        if assoc_el is not None:
-            for child in list(assoc_el):
-                if child.tag not in ("product_features", "categories"):
-                    assoc_el.remove(child)
+            # Strip associations down to only product_features + categories.
+            # PrestaShop 8.1 rejects PUTs that include images, combinations,
+            # stock_availables, etc. inside <associations>.
+            assoc_el = product_el.find("associations")
+            if assoc_el is not None:
+                for child in list(assoc_el):
+                    if child.tag not in ("product_features", "categories"):
+                        assoc_el.remove(child)
 
         # Debug: check critical fields before PUT
         assoc_el = product_el.find("associations")
@@ -256,7 +320,8 @@ class AdminPrestashopClient(PrestashopClient):
             product_el.findtext("indexed"),
         )
 
-        _strip_prestashop_attrs(root)
+        if ps81_workarounds_enabled():
+            _strip_prestashop_attrs(root)
         xml_str = ET.tostring(root, encoding="unicode", xml_declaration=True)
         xml_str = _wrap_language_cdata(xml_str)
 
@@ -327,19 +392,43 @@ class AdminPrestashopClient(PrestashopClient):
     def sync_characteristics_as_features(
         self, characteristics: list[dict],
     ) -> list[tuple[int, int]]:
-        """Ensure every characteristic exists as a PrestaShop Feature +
+        """Resolve every characteristic to an existing PrestaShop Feature +
         Feature-Value pair.
 
-        Fetches all existing features and values in just 2 GET calls, then
-        creates only what's missing — one POST per new feature/value.
+        Fetches all existing features and values in just 2 GET calls.  Each
+        characteristic is resolved in order:
+
+        1. Exact match (case/accent-insensitive) on feature name, then on
+           value within that feature.
+        2. Fuzzy match by similarity (`_best_fuzzy_match`) — maps e.g.
+           ``Resolución`` → ``Resolución de pantalla``.
+        3. If nothing matches and ``PS_CREATE_FEATURES=1``, the missing
+           feature/value is created (legacy behavior).  Otherwise the
+           characteristic is skipped and logged as a warning.
 
         Returns ``[(id_feature, id_feature_value), …]`` ready to pass to
         :meth:`put_product`.
         """
+        create_new = get_config("PS_CREATE_FEATURES", "0") == "1"
+
         feature_map = self._fetch_all_features()
         value_map = self._fetch_all_feature_values()
 
+        # Normalized exact indexes + fuzzy candidate lists
+        norm_features: dict[str, int] = {}
+        feature_candidates: list[tuple[str, int]] = []
+        for name, fid in feature_map.items():
+            norm_features.setdefault(_normalize_name(name), fid)
+            feature_candidates.append((name, fid))
+
+        norm_values: dict[tuple[int, str], int] = {}
+        values_by_feature: dict[int, list[tuple[str, int]]] = {}
+        for (fid, value), fvid in value_map.items():
+            norm_values.setdefault((fid, _normalize_name(value)), fvid)
+            values_by_feature.setdefault(fid, []).append((value, fvid))
+
         pairs: list[tuple[int, int]] = []
+        skipped: list[tuple[str, str, str]] = []
         for ch in characteristics:
             nombre = (ch.get("nombre") or "").strip()
             valor = (ch.get("valor") or "").strip()
@@ -347,21 +436,52 @@ class AdminPrestashopClient(PrestashopClient):
                 continue
 
             # Resolve feature
-            key = nombre.lower()
-            fid = feature_map.get(key)
+            fid = norm_features.get(_normalize_name(nombre))
             if fid is None:
-                fid = self._create_feature(nombre)
-                feature_map[key] = fid
+                fid, matched_name, score = _best_fuzzy_match(nombre, feature_candidates)
+                if fid is not None:
+                    logger.info(
+                        "  Característica '%s' → feature '%s' (similitud %.2f)",
+                        nombre, matched_name, score,
+                    )
+            if fid is None:
+                if create_new:
+                    fid = self._create_feature(nombre)
+                    norm_features.setdefault(_normalize_name(nombre), fid)
+                    feature_candidates.append((nombre, fid))
+                else:
+                    skipped.append((nombre, valor, "característica no existe en PrestaShop"))
+                    continue
 
-            # Resolve feature value (truncate to 255 chars for PrestaShop)
+            # Resolve feature value (PrestaShop limit: 255 chars)
             valor_trunc = valor[:255]
-            vkey = (fid, valor_trunc.lower())
-            fvid = value_map.get(vkey)
+            fvid = norm_values.get((fid, _normalize_name(valor_trunc)))
             if fvid is None:
-                fvid = self._create_feature_value(fid, valor_trunc)
-                value_map[vkey] = fvid
+                fvid, matched_value, _ = _best_fuzzy_match(
+                    valor_trunc, values_by_feature.get(fid, [])
+                )
+                if fvid is not None:
+                    logger.info(
+                        "  Valor '%s' → '%s' (feature %d, similitud %.2f)",
+                        valor_trunc, matched_value, fid, _name_similarity(valor_trunc, matched_value),
+                    )
+            if fvid is None:
+                if create_new:
+                    fvid = self._create_feature_value(fid, valor_trunc)
+                    norm_values.setdefault((fid, _normalize_name(valor_trunc)), fvid)
+                    values_by_feature.setdefault(fid, []).append((valor_trunc, fvid))
+                else:
+                    skipped.append((nombre, valor, "valor no existe en PrestaShop"))
+                    continue
 
             pairs.append((fid, fvid))
+
+        if skipped:
+            logger.warning(
+                "  %d característica(s) omitidas (no existen en PrestaShop): %s",
+                len(skipped),
+                "; ".join(f"{n} = {v} ({r})" for n, v, r in skipped[:10]),
+            )
         return pairs
 
     def _create_feature(self, name: str) -> int:

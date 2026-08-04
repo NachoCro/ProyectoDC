@@ -7,8 +7,6 @@
      href="{{ url_for('products', status='pending') }}">Pendientes</a>
   <a class="tab {{ 'tab--active' if current_status == 'to_activate' }}"
      href="{{ url_for('products', status='to_activate') }}">Para activar</a>
-  <a class="tab {{ 'tab--active' if current_status == 'to_enrich' }}"
-     href="{{ url_for('products', status='to_enrich') }}">Sin procesar</a>
   <a class="tab {{ 'tab--active' if current_status == 'approved' }}"
      href="{{ url_for('products', status='approved') }}">Aprobados</a>
   <a class="tab {{ 'tab--active' if current_status == 'errors' }}"
@@ -16,7 +14,7 @@
 </div>
 
 <div class="table-wrap">
-<table class="table">
+<table class="table table--products">
   <thead>
     <tr>
       <th></th>
@@ -32,18 +30,18 @@
   <tbody>
   {% for p in products %}
     <tr class="row--clickable" onclick="window.location.href='{{ url_for('diff', pid=p.id_prestashop) }}'">
-      <td class="cell--thumb">
+      <td class="cell--thumb" data-label="">
         {% if p.imagen_url %}
           <img src="{{ p.imagen_url }}" alt="" class="thumb"
                onerror="this.style.display='none'">
         {% endif %}
       </td>
-      <td>{{ p.id_prestashop }}</td>
-      <td class="cell--name">{{ p.nombre or '—' }}</td>
-      <td><code>{{ p.ean or '—' }}</code></td>
-      <td>{{ p.marca or '—' }}</td>
-      <td>{{ p.modelo or '—' }}</td>
-      <td>
+      <td data-label="ID">{{ p.id_prestashop }}</td>
+      <td class="cell--name" data-label="">{{ p.nombre or '—' }}</td>
+      <td data-label="EAN"><code>{{ p.ean or '—' }}</code></td>
+      <td data-label="Marca">{{ p.marca or '—' }}</td>
+      <td data-label="Modelo">{{ p.modelo or '—' }}</td>
+      <td data-label="Estado">
         {% if p.pendiente_activar %}
           <span class="badge badge--violet">para activar</span>
         {% elif p.estado_actualizacion == 'actualizado' %}
@@ -56,7 +54,7 @@
           <span class="badge badge--muted">pendiente</span>
         {% endif %}
       </td>
-      <td>
+      <td data-label="">
         <a class="btn btn--sm" href="{{ url_for('diff', pid=p.id_prestashop) }}">Ver diff</a>
       </td>
     </tr>

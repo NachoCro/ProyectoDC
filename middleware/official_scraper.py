@@ -7,19 +7,19 @@ HTML tables), and persists the attributes into the local 3NF EAV tables.
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
-
-from . import spec_extractors
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from . import spec_extractors
 from .config import API_SLEEP
 from .db import get_connection, write_eav
 
@@ -252,7 +252,7 @@ def _fetch_page(page_url: str) -> tuple["BeautifulSoup | None", list[dict[str, s
     if cached and now - cached[0] < _PDF_PAGE_CACHE_TTL_HOURS * 3600:
         return cached[1], cached[2]
 
-    soup: "BeautifulSoup | None" = None
+    soup: BeautifulSoup | None = None
     links: list[dict[str, str]] = []
     try:
         time.sleep(API_SLEEP)  # throttle external requests
@@ -305,7 +305,7 @@ def _extract_inline_specs_from_soup(soup: "BeautifulSoup | None", pdf_url: str) 
     fname = pdf_url.lower().split("?")[0].rstrip("/").rsplit("/", 1)[-1]
     anchor = None
     for cand in soup.find_all("a", href=True):
-        href = (cand.get("href") or "").lower()
+        href = str(cand.get("href") or "").lower()
         if href.endswith(fname):
             anchor = cand
             break
@@ -593,7 +593,6 @@ _PRODUCT_LINE_TO_BRAND: dict[str, str] = {
     "redmi": "xiaomi",
     "poco": "xiaomi",
     "mi ": "xiaomi",
-    "macbook": "apple",
     "thinkpad": "lenovo",
     "ideapad": "lenovo",
     "legion": "lenovo",
@@ -1033,7 +1032,7 @@ def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
     for attr in ("property", "name"):
         tag = soup.find("meta", attrs={attr: "og:image"})
         if tag and tag.get("content"):
-            return _normalize_url(tag["content"].strip())
+            return _normalize_url(str(tag["content"]).strip())
 
     # Strategy 2: <img> with product-related attributes
     product_img_selectors = [
@@ -1051,12 +1050,12 @@ def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
     seen_srcs: set[str] = set()
     for selector in product_img_selectors:
         for img in soup.select(selector):
-            src = img.get("src", "").strip()
+            src = str(img.get("src", "")).strip()
             if not src or src in seen_srcs:
                 continue
             # Skip tiny images (icons, spacers, etc.)
-            width = img.get("width", "")
-            height = img.get("height", "")
+            width = str(img.get("width", ""))
+            height = str(img.get("height", ""))
             try:
                 if width and int(width) < 100:
                     continue
@@ -1075,13 +1074,13 @@ def _extract_image(soup: BeautifulSoup, current_url: str = "") -> str:
 
     # Strategy 3: Any reasonably sized <img> in the page (last resort)
     for img in soup.find_all("img"):
-        src = img.get("src", "").strip()
+        src = str(img.get("src", "")).strip()
         if not src or src.startswith("data:"):
             continue
         if any(skip in src.lower() for skip in ("icon", "logo", "avatar", "pixel", "spacer", "blank")):
             continue
         # Check alt text for product hints
-        alt = (img.get("alt") or "").lower()
+        alt = str(img.get("alt") or "").lower()
         if any(kw in alt for kw in ("product", "producto", "image", "foto")):
             return _normalize_url(src)
 
@@ -1163,7 +1162,7 @@ def _extract_images(soup: BeautifulSoup, current_url: str = "", max_images: int 
     for attr in ("property", "name"):
         tag = soup.find("meta", attrs={attr: "og:image"})
         if tag and tag.get("content"):
-            _add_image(tag["content"].strip())
+            _add_image(str(tag["content"]).strip())
             if len(result_images) >= max_images:
                 return result_images
 
@@ -1182,12 +1181,12 @@ def _extract_images(soup: BeautifulSoup, current_url: str = "", max_images: int 
     ]
     for selector in product_img_selectors:
         for img in soup.select(selector):
-            src = img.get("src", "").strip()
+            src = str(img.get("src", "")).strip()
             if not src:
                 continue
             # Skip tiny images (icons, spacers, etc.)
-            width = img.get("width", "")
-            height = img.get("height", "")
+            width = str(img.get("width", ""))
+            height = str(img.get("height", ""))
             try:
                 if width and int(width) < 100:
                     continue
@@ -1203,10 +1202,10 @@ def _extract_images(soup: BeautifulSoup, current_url: str = "", max_images: int 
     # Look for images with alt text containing view patterns like "Front", "Back", "Left", etc.
     view_patterns = ("front", "back", "left", "right", "side", "view", "angle", "hero", "main")
     for img in soup.find_all("img"):
-        src = img.get("src", "").strip()
+        src = str(img.get("src", "")).strip()
         if not src:
             continue
-        alt = (img.get("alt") or "").lower()
+        alt = str(img.get("alt") or "").lower()
         # Match images with view-related alt text
         if any(pat in alt for pat in view_patterns):
             _add_image(src)
@@ -1215,11 +1214,11 @@ def _extract_images(soup: BeautifulSoup, current_url: str = "", max_images: int 
 
     # Strategy 5: Any reasonably sized <img> in the page (last resort)
     for img in soup.find_all("img"):
-        src = img.get("src", "").strip()
+        src = str(img.get("src", "")).strip()
         if not src:
             continue
         # Check alt text for product hints
-        alt = (img.get("alt") or "").lower()
+        alt = str(img.get("alt") or "").lower()
         if any(kw in alt for kw in ("product", "producto", "image", "foto")):
             _add_image(src)
             if len(result_images) >= max_images:
@@ -1593,7 +1592,7 @@ def _is_category_page(soup: BeautifulSoup, url: str) -> bool:
             links = soup.find_all("a", href=True)
             product_links = [
                 a for a in links
-                if any(kw in (a.get("href") or "").lower()
+                if any(kw in str(a.get("href") or "").lower()
                        for kw in ("/product", "/item", "/detail", "/p/"))
             ]
             if len(product_links) >= 3:
@@ -1605,7 +1604,7 @@ def _is_category_page(soup: BeautifulSoup, url: str) -> bool:
         links = main_content.find_all("a", href=True)
         product_link_count = sum(
             1 for a in links
-            if any(kw in (a.get("href") or "").lower()
+            if any(kw in str(a.get("href") or "").lower()
                    for kw in ("/product", "/item", "/detail", "/p/"))
         )
         if product_link_count >= 5:
@@ -1633,7 +1632,7 @@ def _find_product_link_on_category(soup: BeautifulSoup, base_url: str) -> str | 
     product_links = []
 
     for a in links:
-        href = a.get("href", "")
+        href = str(a.get("href", ""))
         if not href or href.startswith("#") or href.startswith("javascript:"):
             continue
         full_url = urljoin(base_url, href).lower()
@@ -1676,7 +1675,7 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     Side effects
     -------------
     - Writes characteristics into ``producto_caracteristicas`` (EAV).
-    - Updates ``productos.icecat_json``, ``productos.marca``,
+    - Updates ``productos.proposal_json``, ``productos.marca``,
       ``productos.modelo``, ``productos.imagen_url``.
     - Appends an audit log entry.
     """
@@ -1945,7 +1944,7 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     # 3a. PDF spec sheet fallback (for brands like Xerox that publish specs in PDFs)
     MIN_CHARS_FOR_PDF = 5
     if len(result.get("caracteristicas") or []) < MIN_CHARS_FOR_PDF:
-        from .pdf_scraper import find_spec_pdf_links, extract_specs_from_pdf
+        from .pdf_scraper import extract_specs_from_pdf, find_spec_pdf_links
 
         pdf_links = find_spec_pdf_links(soup, final_url)
         if pdf_links:
@@ -2006,7 +2005,8 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
         chn_lower = chn.lower()
         if chn_lower in ("tamaño", "talla", "size", "medida", "pantalla", "dimension", "dimensions"):
             continue
-        if any(j in chn_lower for j in ("review", "promotion", "trustmark", "navigate to", "go to ", "to do this", "to fine-tune")):
+        junk_tokens = ("review", "promotion", "trustmark", "navigate to", "go to ", "to do this", "to fine-tune")
+        if any(j in chn_lower for j in junk_tokens):
             continue
         if len(chn) > 20 and chn_lower == chv.lower():
             continue
@@ -2054,7 +2054,7 @@ def _persist_scrape_result(product_id: int, result: dict, source: str, url: str)
 
         conn.execute(
             """UPDATE productos
-               SET icecat_json     = ?,
+               SET proposal_json = ?,
                    marca           = COALESCE(NULLIF(?, ''), marca),
                    modelo          = COALESCE(NULLIF(?, ''), modelo),
                    imagen_url      = COALESCE(?, imagen_url),

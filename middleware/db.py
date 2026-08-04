@@ -75,7 +75,7 @@ def _ensure_schema() -> None:
 
             # ── Migrations (idempotent ALTER TABLE) ──────────────────────
 
-            # Migration 001 (admin UI): icecat_json + audit_log
+            # Migration 001 (admin UI): icecat_json (renamed to proposal_json by 008) + audit_log
             try:
                 conn.execute("ALTER TABLE productos ADD COLUMN icecat_json TEXT")
             except sqlite3.OperationalError:
@@ -137,6 +137,15 @@ def _ensure_schema() -> None:
             except sqlite3.OperationalError:
                 pass
 
+            # Migration 008: rename icecat_json → proposal_json (the column stores
+            # generic proposal JSON from brand/AI scraping — no Icecat integration exists)
+            try:
+                conn.execute(
+                    "ALTER TABLE productos RENAME COLUMN icecat_json TO proposal_json"
+                )
+            except sqlite3.OperationalError:
+                pass
+
             # ── Config table (app settings) ─────────────────────────────
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS config (
@@ -181,7 +190,8 @@ def _ensure_schema() -> None:
                         (1,  'Marca'), (2,  'Modelo'), (3,  'Color'), (4,  'Peso'), (5,  'Dimensiones'),
                         (6,  'Tecnologia de impresion'), (7,  'Volumen de impresion'), (8,  'Resolucion de capa'),
                         (9,  'Diametro de filamento'), (10, 'Materiales compatibles'), (11, 'Velocidad de impresion'),
-                        (12, 'Numero de extrusores'), (13, 'Cama caliente'), (14, 'Conectividad'), (15, 'Pantalla tactil'),
+                        (12, 'Numero de extrusores'), (13, 'Cama caliente'),
+                        (14, 'Conectividad'), (15, 'Pantalla tactil'),
                         (16, 'Procesador'), (17, 'RAM'), (18, 'Almacenamiento'), (19, 'Tipo de pantalla'),
                         (20, 'Tamanio de pantalla'), (21, 'Resolucion de pantalla'), (22, 'Tarjeta grafica'),
                         (23, 'Sistema operativo'), (24, 'Duracion de bateria'), (25, 'Puertos'),
@@ -197,7 +207,10 @@ def _ensure_schema() -> None:
             # ── Indexes ─────────────────────────────────────────────────
             conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_ean  ON productos(ean)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_mpn  ON productos(mpn)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_productos_estado_actualizacion ON productos(estado_actualizacion)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_productos_estado_actualizacion "
+                "ON productos(estado_actualizacion)"
+            )
 
             conn.commit()
         finally:

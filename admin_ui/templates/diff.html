@@ -3,16 +3,16 @@
 
 {% macro diff_cell(current, proposed) %}
   {% if current == proposed %}
-    <td class="dc dc--same">{{ current or '—' }}</td>
+    <td class="dc dc--same" data-label="Valor">{{ current or '—' }}</td>
   {% elif not current and proposed %}
-    <td class="dc dc--old"><del class="dc__del">—</del></td>
-    <td class="dc dc--new"><ins class="dc__ins">{{ proposed }}</ins></td>
+    <td class="dc dc--old" data-label="Actual"><del class="dc__del">—</del></td>
+    <td class="dc dc--new" data-label="Propuesta"><ins class="dc__ins">{{ proposed }}</ins></td>
   {% elif current and not proposed %}
-    <td class="dc dc--old"><del class="dc__del">{{ current }}</del></td>
-    <td class="dc dc--new"><ins class="dc__ins">—</ins></td>
+    <td class="dc dc--old" data-label="Actual"><del class="dc__del">{{ current }}</del></td>
+    <td class="dc dc--new" data-label="Propuesta"><ins class="dc__ins">—</ins></td>
   {% else %}
-    <td class="dc dc--old"><del class="dc__del">{{ current }}</del></td>
-    <td class="dc dc--new"><ins class="dc__ins">{{ proposed }}</ins></td>
+    <td class="dc dc--old" data-label="Actual"><del class="dc__del">{{ current }}</del></td>
+    <td class="dc dc--new" data-label="Propuesta"><ins class="dc__ins">{{ proposed }}</ins></td>
   {% endif %}
 {% endmacro %}
 
@@ -158,8 +158,8 @@
           {% if val %}
             <tr>
               <th class="dc__label">{{ label }}</th>
-              <td class="dc dc--old"><span class="dc__muted">(sin datos locales)</span></td>
-              <td class="dc dc--new">{{ val }}</td>
+              <td class="dc dc--old" data-label="Actual"><span class="dc__muted">(sin datos locales)</span></td>
+              <td class="dc dc--new" data-label="Propuesta">{{ val }}</td>
             </tr>
           {% endif %}
         {% endfor %}

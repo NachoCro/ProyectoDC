@@ -4,12 +4,13 @@ import json
 import logging
 import threading
 from datetime import datetime, timezone
+from typing import Any
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
+from middleware.characteristics import merge_characteristics
 from middleware.config import DAEMON_INTERVAL
 from middleware.db import get_connection, write_eav
-from middleware.characteristics import merge_characteristics
 from middleware.descriptions import get_description
 from middleware.official_scraper import scrape_from_direct_url
 
@@ -84,7 +85,6 @@ def _release_pipeline_lock() -> None:
 
 @app.route("/")
 def dashboard():
-    from middleware.config import get_config
 
     conn = get_connection()
     try:
@@ -142,11 +142,11 @@ def products():
         query = """SELECT id_prestashop, ean, mpn, marca, modelo, nombre,
                           imagen_url, estado_actualizacion, product_not_found,
                           pendiente_activar,
-                          icecat_json IS NOT NULL AS tiene_propuesta
+                          proposal_json IS NOT NULL AS tiene_propuesta
                    FROM productos"""
 
         if status == "pending":
-            query += " WHERE icecat_json IS NOT NULL"
+            query += " WHERE proposal_json IS NOT NULL"
         elif status == "to_activate":
             query += " WHERE pendiente_activar = 1"
         elif status == "approved":
@@ -154,7 +154,10 @@ def products():
         elif status == "errors":
             query += " WHERE product_not_found = 1"
         elif status == "to_enrich":
-            query += " WHERE icecat_json IS NULL AND product_not_found = 0 AND estado_actualizacion = 'desactualizado'"
+            query += (
+                " WHERE proposal_json IS NULL AND product_not_found = 0"
+                " AND estado_actualizacion = 'desactualizado'"
+            )
 
         query += " ORDER BY id_prestashop DESC"
 
@@ -184,8 +187,8 @@ def diff(pid: int):
 
         product = dict(row)
 
-        # Parse icecat_json for the diff view
-        raw_json = product.get("icecat_json")
+        # Parse proposal_json for the diff view
+        raw_json = product.get("proposal_json")
         proposal = None
         if raw_json:
             try:
@@ -234,8 +237,8 @@ def approve(pid: int):
 
         product = dict(row)
 
-        # Parse proposal from icecat_json
-        raw_json = product.get("icecat_json")
+        # Parse proposal from proposal_json
+        raw_json = product.get("proposal_json")
         proposal = None
         if raw_json:
             try:
@@ -261,7 +264,7 @@ def approve(pid: int):
             )
             desc = f'<div class="caracteristicas">{lines}</div>'
 
-        updates = {
+        updates: dict[str, Any] = {
             "description": desc,
             "description_short": get_description(subcat_name)["descripcion_corta"],
         }
@@ -305,7 +308,7 @@ def approve(pid: int):
             """UPDATE productos
                SET marca = ?, modelo = ?,
                    estado_actualizacion = 'actualizado',
-                   icecat_json = NULL,
+                   proposal_json = NULL,
                    imagen_url = ?,
                    fecha_sincronizacion = datetime('now')
                WHERE id_prestashop = ?""",
@@ -341,7 +344,10 @@ def approve(pid: int):
         # Check completeness after activation and auto-complete if needed
         if activate:
             try:
-                from middleware.check_active import check_product_completeness, complete_incomplete_product
+                from middleware.check_active import (
+                    check_product_completeness,
+                    complete_incomplete_product,
+                )
                 completeness = check_product_completeness(pid)
                 if not completeness["is_complete"]:
                     logger.info(
@@ -372,7 +378,7 @@ def reject(pid: int):
     conn = get_connection()
     try:
         conn.execute(
-            "UPDATE productos SET icecat_json = NULL WHERE id_prestashop = ?",
+            "UPDATE productos SET proposal_json = NULL WHERE id_prestashop = ?",
             (pid,),
         )
         _audit(conn, pid, actor, "rechazado")
@@ -396,7 +402,7 @@ def re_sync(pid: int):
         conn.execute(
             """UPDATE productos
                SET product_not_found = 0,
-                   icecat_json = NULL,
+                   proposal_json = NULL,
                    estado_actualizacion = 'desactualizado'
                WHERE id_prestashop = ?""",
             (pid,),
@@ -416,7 +422,6 @@ def re_sync(pid: int):
 @app.route("/products/<int:pid>/scrape-url", methods=["POST"])
 def scrape_url(pid: int):
     """Accept a verified official URL, scrape it, and save to DB."""
-    actor = request.form.get("actor", "admin")
     url = (request.form.get("url") or "").strip()
 
     if not url:
@@ -487,8 +492,8 @@ def run_pipeline():
         return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
 
     from middleware import pipeline_state
-    from middleware.extract import run as extract_run
     from middleware.enrich import run as enrich_run
+    from middleware.extract import run as extract_run
 
     def _run():
         try:
@@ -562,12 +567,14 @@ _SETTINGS_KEYS = [
     ("BATCH_SIZE", "Batch Size"),
     ("API_SLEEP", "API Sleep (segundos)"),
     ("DAEMON_INTERVAL", "Daemon Interval (segundos)"),
+    ("PS_COMPAT_81", "PrestaShop 8.1 compat (1=workarounds activos)"),
+    ("PS_CREATE_FEATURES", "Crear características nuevas en PS (1=sí, 0=solo usar existentes)"),
 ]
 
 
 @app.route("/settings", methods=["GET"])
 def settings():
-    from middleware.config import _get, DEFAULTS
+    from middleware.config import DEFAULTS, _get
     values = {}
     for key, label in _SETTINGS_KEYS:
         values[key] = {"label": label, "value": _get(key), "default": DEFAULTS.get(key, "")}
@@ -577,7 +584,7 @@ def settings():
 
 @app.route("/settings", methods=["POST"])
 def settings_save():
-    from middleware.config import reload_db_config, DB_PATH
+    from middleware.config import reload_db_config
     conn = get_connection()
     try:
         for key, _ in _SETTINGS_KEYS:
@@ -680,8 +687,8 @@ def check_active():
     if not _acquire_pipeline_lock():
         return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
 
-    from middleware.check_active import check_all_active
     from middleware import pipeline_state
+    from middleware.check_active import check_all_active
 
     def _run():
         try:
@@ -727,9 +734,9 @@ def start_daemon():
     if state["running"]:
         return jsonify({"ok": False, "error": "El daemon ya está ejecutándose"}), 409
 
+    import os
     import subprocess
     import sys
-    import os
 
     interval = request.form.get("interval", type=int) or DAEMON_INTERVAL
     dry_run = request.form.get("dry_run", "0") == "1"
@@ -744,17 +751,19 @@ def start_daemon():
         cmd.append("-v")
 
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            start_new_session=True,
-        )
+        popen_kwargs: dict[str, Any] = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "cwd": os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        }
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **popen_kwargs)
         _daemon_process = proc
 
         # Write initial state to SQLite so the UI sees it immediately
-        from middleware.daemon_state import start as ds_start, set_pid
+        from middleware.daemon_state import set_pid
+        from middleware.daemon_state import start as ds_start
         ds_start(interval, dry_run, check_inactive)
         set_pid(proc.pid)
 
@@ -770,22 +779,28 @@ def stop_daemon():
     """Stop the daemon process."""
     global _daemon_process
 
-    from middleware.daemon_state import get_state, stop as ds_stop
+    from middleware.daemon_state import get_state
+    from middleware.daemon_state import stop as ds_stop
     state = get_state()
 
     if not state["running"] and _daemon_process is None:
         return jsonify({"ok": False, "error": "El daemon no está ejecutándose"}), 400
 
-    # Try to stop via stored PID
+    # Request a graceful stop via SQLite flag (portable, works on any OS)
+    from middleware.daemon_state import request_stop
+    request_stop()
+
+    # Best-effort SIGTERM on POSIX for immediate termination
     pid = state.get("pid") or (_daemon_process.pid if _daemon_process else None)
     if pid:
-        try:
-            import os
-            import signal
-            os.kill(pid, signal.SIGTERM)
-            logger.info("Sent SIGTERM to daemon PID %d", pid)
-        except (ProcessLookupError, PermissionError):
-            pass
+        import os
+        import signal
+        if hasattr(signal, "SIGTERM"):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                logger.info("Sent SIGTERM to daemon PID %d", pid)
+            except (ProcessLookupError, PermissionError):
+                pass
 
     # Write stopped state to SQLite immediately
     ds_stop()

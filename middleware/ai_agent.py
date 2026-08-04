@@ -20,8 +20,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from .config import API_SLEEP
 from . import spec_extractors
+from .config import API_SLEEP
 
 SELENIUM_TIMEOUT = 12
 
@@ -121,7 +121,6 @@ def _extract_image_from_tags(soup: BeautifulSoup) -> str:
     2. <img> with product-related alt text
     3. Any reasonably sized <img> (last resort)
     """
-    from urllib.parse import urljoin
 
     def _normalize_url(url: str) -> str:
         if not url or url.startswith("data:"):
@@ -144,14 +143,14 @@ def _extract_image_from_tags(soup: BeautifulSoup) -> str:
     seen_srcs: set[str] = set()
     for selector in product_selectors:
         for img in soup.select(selector):
-            src = img.get("src", "").strip()
+            src = str(img.get("src", "")).strip()
             if not src or src in seen_srcs:
                 continue
             # Skip tiny images
             try:
-                if img.get("width") and int(img["width"]) < 100:
+                if img.get("width") and int(str(img["width"])) < 100:
                     continue
-                if img.get("height") and int(img["height"]) < 100:
+                if img.get("height") and int(str(img["height"])) < 100:
                     continue
             except (ValueError, TypeError):
                 pass
@@ -165,10 +164,10 @@ def _extract_image_from_tags(soup: BeautifulSoup) -> str:
 
     # Strategy 2: <img> with product-related alt text
     for img in soup.find_all("img"):
-        src = img.get("src", "").strip()
+        src = str(img.get("src", "")).strip()
         if not src or src.startswith("data:"):
             continue
-        alt = (img.get("alt") or "").lower()
+        alt = str(img.get("alt") or "").lower()
         if any(kw in alt for kw in ("product", "producto", "image", "foto")):
             return _normalize_url(src)
 
@@ -233,7 +232,6 @@ def _get_brand_official_urls(marca: str, nombre: str) -> list[str]:
 
     Returns a list of candidate URLs to try (empty if brand is not supported).
     """
-    import re
 
     marca_lower = marca.lower().strip()
     urls = []
@@ -352,7 +350,6 @@ def _build_search_query(marca: str, nombre: str) -> str:
         "apple", "iphone 15 pro max" → "apple iphone 15 pro max especificaciones"
         "samsung", "Galaxy S21 5G" → "Samsung Galaxy S21 5G especificaciones"
     """
-    import re
 
     if not nombre:
         return f"{marca} especificaciones" if marca else "especificaciones"
@@ -379,7 +376,10 @@ def _build_search_query(marca: str, nombre: str) -> str:
         # Use the first (most specific) model number
         model = all_models[0]
         # Build query with brand + model, excluding manual/support pages
-        query = f"{marca} {model} especificaciones -manual -guia -tutorial -soporte".strip() if marca else f"{model} especificaciones -manual -guia"
+        if marca:
+            query = f"{marca} {model} especificaciones -manual -guia -tutorial -soporte"
+        else:
+            query = f"{model} especificaciones -manual -guia"
     else:
         # No model found, use full name but remove noise words
         from .official_scraper import _NOISE_WORDS
@@ -390,7 +390,10 @@ def _build_search_query(marca: str, nombre: str) -> str:
             if w.lower() not in _NOISE_WORDS and len(w) > 1
         ]
         cleaned_name = " ".join(cleaned_words[:5])  # Limit to 5 words
-        query = f"{marca} {cleaned_name} especificaciones -manual -guia".strip() if marca else f"{cleaned_name} especificaciones -manual -guia"
+        if marca:
+            query = f"{marca} {cleaned_name} especificaciones -manual -guia"
+        else:
+            query = f"{cleaned_name} especificaciones -manual -guia"
 
     return query
 

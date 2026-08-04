@@ -7,10 +7,13 @@ using pdfplumber for table and text extraction.
 import io
 import logging
 import re
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import pdfplumber
 import requests
+
+if TYPE_CHECKING:
+    from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,7 @@ def _is_spec_pdf_url(url: str, link_text: str = "") -> bool:
     return True
 
 
-def _download_pdf(url: str, timeout: int = 30) -> Optional[bytes]:
+def _download_pdf(url: str, timeout: int = 30) -> bytes | None:
     """Download PDF content from URL."""
     try:
         resp = requests.get(url, timeout=timeout, headers={
@@ -174,7 +177,7 @@ def extract_specs_from_pdf(
     pdf_url: str,
     marca: str = "",
     modelo: str = "",
-) -> Optional[dict]:
+) -> dict | None:
     """Download a PDF spec sheet and extract characteristics.
 
     Parameters
@@ -258,7 +261,7 @@ def find_spec_pdf_links(
     seen_urls: set[str] = set()
 
     for a_tag in soup.find_all("a", href=True):
-        href = a_tag["href"].strip()
+        href = str(a_tag["href"]).strip()
         if not href.lower().endswith(".pdf"):
             continue
 

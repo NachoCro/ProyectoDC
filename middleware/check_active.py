@@ -11,13 +11,13 @@ Incomplete products are automatically completed using the enrichment pipeline.
 import json
 import logging
 
+from . import pipeline_state
 from .db import (
+    ensure_subcategoria,
     get_connection,
     get_subcategoria_by_ps_category,
-    ensure_subcategoria,
     insert_product,
 )
-from . import pipeline_state
 
 logger = logging.getLogger(__name__)
 
@@ -146,10 +146,11 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
     Returns True if the product was completed successfully.
     """
     from admin_ui.prestashop import AdminPrestashopClient, PrestashopError
-    from .enrich import _build_description
-    from .db import write_eav
+
     from .characteristics import merge_characteristics
+    from .db import write_eav
     from .descriptions import get_description
+    from .enrich import _build_description
 
     # Ensure product exists in local DB (inserts if missing)
     product = _ensure_product_in_db(pid)
@@ -188,13 +189,13 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
     conn = get_connection()
     try:
         subcat_name = product.get("subcat_name") or ""
-        icecat_json = product.get("icecat_json")
+        proposal_json = product.get("proposal_json")
 
         # Parse existing proposal if available
         proposal = None
-        if icecat_json:
+        if proposal_json:
             try:
-                proposal = json.loads(icecat_json) if isinstance(icecat_json, str) else icecat_json
+                proposal = json.loads(proposal_json) if isinstance(proposal_json, str) else proposal_json
             except (json.JSONDecodeError, TypeError):
                 proposal = None
 
@@ -222,7 +223,7 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
             # Store the proposal
             conn.execute(
                 """UPDATE productos
-                   SET icecat_json = ?,
+                   SET proposal_json = ?,
                        marca = ?,
                        modelo = ?,
                        imagen_url = ?

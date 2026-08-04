@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import requests
 from requests.auth import HTTPBasicAuth
 
-from .config import PRESTASHOP_API_URL, PRESTASHOP_API_KEY, API_SLEEP
+from .config import API_SLEEP, PRESTASHOP_API_KEY, PRESTASHOP_API_URL
 
 logger = logging.getLogger(__name__)
 

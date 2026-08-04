@@ -8,6 +8,7 @@ per-brand configuration.
 import json
 import logging
 import re
+from typing import cast
 
 from bs4 import BeautifulSoup, Tag
 
@@ -50,9 +51,9 @@ def extract_tables(soup: BeautifulSoup) -> list[dict[str, str]]:
     """
     features: list[dict[str, str]] = []
     seen: set[str] = set()
-    current_section = ""
 
     for table in soup.find_all("table"):
+        current_section = ""
         for tr in table.find_all("tr"):
             cells = tr.find_all(["td", "th"])
 
@@ -148,7 +149,7 @@ def extract_microdata(soup: BeautifulSoup) -> list[dict[str, str]]:
     seen: set[str] = set()
 
     # Strategy 1: itemprop="additionalProperty" with PropertyValue
-    for container in soup.find_all(attrs={"itemprop": "additionalProperty"}):
+    for container in soup.find_all(attrs={"itemprop": "additionalProperty"}):  # type: ignore[call-overload]
         name_el = container.find(attrs={"itemprop": "name"})
         value_el = container.find(attrs={"itemprop": "value"})
         if name_el and value_el:
@@ -160,7 +161,7 @@ def extract_microdata(soup: BeautifulSoup) -> list[dict[str, str]]:
                     features.append({"nombre": name, "valor": value})
 
     # Strategy 2: itemprop pairs within itemscope Product blocks
-    product_scope = soup.find(attrs={"itemtype": re.compile(r"schema\.org/Product")})
+    product_scope = soup.find(attrs={"itemtype": re.compile(r"schema\.org/Product")})  # type: ignore[call-overload]
     if product_scope:
         # Top-level Product properties that are specs
         _SPEC_PROPS = {
@@ -179,14 +180,18 @@ def extract_microdata(soup: BeautifulSoup) -> list[dict[str, str]]:
                         features.append({"nombre": prop_name.replace("_", " ").title(), "valor": value})
 
     # Strategy 3: itemprop="name" + itemprop="value" siblings
-    for name_el in soup.find_all(attrs={"itemprop": "name"}):
+    for name_el in soup.find_all(attrs={"itemprop": "name"}):  # type: ignore[call-overload]
         parent = name_el.parent
         if not parent:
             continue
         value_el = parent.find(attrs={"itemprop": "value"})
         if not value_el:
             continue
-        name, value = clean_feature(name_el.get_text(strip=True), value_el.get("content") or value_el.get_text(strip=True))
+        # Meta tags carry the value in the `content` attribute, not text.
+        name, value = clean_feature(
+            name_el.get("content") or name_el.get_text(strip=True),
+            value_el.get("content") or value_el.get_text(strip=True),
+        )
         if name and value and len(name) >= 2 and len(value) >= 2:
             key_norm = name.lower().strip()
             if key_norm not in seen:
@@ -220,13 +225,13 @@ def extract_div_spec_rows(soup: BeautifulSoup) -> list[dict[str, str]]:
         re.IGNORECASE,
     )
 
-    label_els = soup.find_all(attrs={"class": _LABEL_CLASSES})
+    label_els = soup.find_all(attrs={"class": _LABEL_CLASSES})  # type: ignore[call-overload]
     for label_el in label_els:
         # Find the sibling or nearby value element
         parent = label_el.parent
         if not parent:
             continue
-        value_el = parent.find(attrs={"class": _VALUE_CLASSES})
+        value_el = parent.find(attrs={"class": _VALUE_CLASSES})  # type: ignore[call-overload]
         if not value_el:
             continue
         name = label_el.get_text(strip=True)
@@ -243,7 +248,7 @@ def extract_div_spec_rows(soup: BeautifulSoup) -> list[dict[str, str]]:
     _BEM_KEY = re.compile(r"(key|name|label|title)", re.IGNORECASE)
     _BEM_VAL = re.compile(r"(val|value|desc|data|content)", re.IGNORECASE)
 
-    for row in soup.find_all(attrs={"class": _BEM_SPEC_ROW}):
+    for row in soup.find_all(attrs={"class": _BEM_SPEC_ROW}):  # type: ignore[call-overload]
         children = [c for c in row.children if isinstance(c, Tag)]
         if len(children) < 2:
             continue
@@ -251,7 +256,7 @@ def extract_div_spec_rows(soup: BeautifulSoup) -> list[dict[str, str]]:
         key_el = None
         val_el = None
         for child in children:
-            classes = " ".join(child.get("class", []))
+            classes = " ".join(cast(list[str], child.get("class") or []))
             if _BEM_KEY.search(classes) and not key_el:
                 key_el = child
             elif _BEM_VAL.search(classes) and not val_el:
@@ -267,7 +272,7 @@ def extract_div_spec_rows(soup: BeautifulSoup) -> list[dict[str, str]]:
 
     # ── Pattern 3: data-testid based extraction ──────────────────────────────
     _TESTID_SPEC = re.compile(r"spec(?:ification)?[-_]?(name|label|key|value|val)", re.IGNORECASE)
-    testid_els = soup.find_all(attrs={"data-testid": _TESTID_SPEC})
+    testid_els = soup.find_all(attrs={"data-testid": _TESTID_SPEC})  # type: ignore[call-overload]
     for el in testid_els:
         testid = el.get("data-testid", "")
         parent = el.parent
@@ -276,7 +281,8 @@ def extract_div_spec_rows(soup: BeautifulSoup) -> list[dict[str, str]]:
         # Find the matching pair
         if "name" in testid.lower() or "label" in testid.lower() or "key" in testid.lower():
             # This is a label, find its value sibling
-            value_el = parent.find(attrs={"data-testid": re.compile(r"spec(?:ification)?[-_]?(value|val)", re.IGNORECASE)})
+            value_re = re.compile(r"spec(?:ification)?[-_]?(value|val)", re.IGNORECASE)
+            value_el = parent.find(attrs={"data-testid": value_re})  # type: ignore[call-overload]
             if value_el:
                 name = el.get_text(strip=True)
                 value = value_el.get_text(strip=True)
@@ -413,7 +419,7 @@ def extract_tcl_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
     spec_component = soup.select_one("[data-api]")
     if not spec_component:
         return []
-    data_api = (spec_component.get("data-api") or "").strip()
+    data_api = str(spec_component.get("data-api") or "").strip()
     if not data_api:
         return []
 
@@ -421,7 +427,7 @@ def extract_tcl_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
     product_data_path = ""
     if page_data is not None:
         try:
-            raw = _html.unescape(page_data.get("value") or "")
+            raw = _html.unescape(str(page_data.get("value") or ""))
             data = _json.loads(raw)
             products = data.get("allproducts") or []
             selected = next(
@@ -676,7 +682,7 @@ def extract_og_product_meta(soup: BeautifulSoup) -> dict:
                 continue
             tag = soup.find("meta", attrs={attr: og_key})
             if tag and tag.get("content"):
-                result[field] = tag["content"].strip()
+                result[field] = str(tag["content"]).strip()
 
     # Fallback title from <title> tag
     if "title" not in result:
@@ -711,6 +717,9 @@ def extract_body_text_specs(soup: BeautifulSoup) -> list[dict[str, str]]:
         "monday", "tuesday", "wednesday", "thursday", "friday",
         "saturday", "sunday", "contact", "support", "help",
         "faq", "return", "shipping", "delivery", "warranty",
+        # Spanish equivalents
+        "precio", "comprar", "carrito", "envio", "envío", "suscripcion",
+        "suscripción", "contacto", "soporte", "ayuda", "garantia", "garantía",
     }
     _SKIP_VALUES = {
         "yes", "no", "true", "false", "n/a", "none", "n/a", "-",

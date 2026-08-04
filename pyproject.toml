@@ -1,0 +1,35 @@
+[project]
+name = "middleware-prestashop-icecat"
+version = "0.1.0"
+description = "Middleware PrestaShop: extracción + enriquecimiento + admin UI"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["venv", "migrations", "schema.sql"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = false
+check_untyped_defs = false
+exclude = ["venv"]
+
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*", "torch", "torch.*", "sentence_transformers", "sentence_transformers.*"]
+follow_imports = "skip"

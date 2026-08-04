@@ -2,12 +2,12 @@ import logging
 
 from .config import BATCH_SIZE
 from .db import (
+    ensure_subcategoria,
     get_connection,
     get_subcategoria_by_ps_category,
-    ensure_subcategoria,
     has_ean_in_db,
-    has_product_not_found,
     has_id_in_db,
+    has_product_not_found,
     insert_product,
     sync_producto_from_prestashop,
 )
