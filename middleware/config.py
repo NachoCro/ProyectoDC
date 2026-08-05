@@ -15,6 +15,7 @@ DEFAULTS = {
     "DAEMON_INTERVAL": "300",  # seconds between checks (5 min default)
     "PS_COMPAT_81": "1",  # PrestaShop 8.1 PUT workarounds (strip attrs, drop assocs, force state)
     "PS_CREATE_FEATURES": "0",  # 1 = create missing features/values in PS; 0 = reuse existing only
+    "PS_MPN_FIELD": "mpn",  # product model field in the API (mpn = 1.7+; use reference for 1.6)
 }
 
 # ── DB-backed config (overrides .env) ──────────────────────────────────

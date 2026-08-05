@@ -5,9 +5,18 @@ import xml.etree.ElementTree as ET
 import requests
 from requests.auth import HTTPBasicAuth
 
-from .config import API_SLEEP, PRESTASHOP_API_KEY, PRESTASHOP_API_URL
+from .config import API_SLEEP, PRESTASHOP_API_KEY, PRESTASHOP_API_URL, get_config
 
 logger = logging.getLogger(__name__)
+
+
+def _mpn_field_name() -> str:
+    """Name of the product model field in the PrestaShop API.
+
+    PrestaShop >= 1.7 exposes ``mpn``; 1.6 has no such field — set
+    ``PS_MPN_FIELD=reference`` (or ``supplier_reference``) via config.
+    """
+    return (get_config("PS_MPN_FIELD", "mpn") or "mpn").strip() or "mpn"
 
 
 class PrestashopError(Exception):
@@ -91,7 +100,7 @@ class PrestashopClient:
         """
         root = self._request("products", {
             "filter[active]": "[0]",
-            "display": "[id,ean13,mpn,id_manufacturer,id_category_default,name]",
+            "display": f"[id,ean13,{_mpn_field_name()},id_manufacturer,id_category_default,name]",
             "limit": f"{offset},{limit}",
         })
         products_el = root.find(".//products")
@@ -109,7 +118,7 @@ class PrestashopClient:
             result.append({
                 "id": self._text(p, "id"),
                 "ean13": self._text(p, "ean13"),
-                "mpn": self._text(p, "mpn"),
+                "mpn": self._text(p, _mpn_field_name()),
                 "id_manufacturer": self._text(p, "id_manufacturer"),
                 "id_category_default": self._text(p, "id_category_default"),
                 "name": name,
@@ -127,7 +136,7 @@ class PrestashopClient:
         """
         root = self._request("products", {
             "filter[active]": "[1]",
-            "display": "[id,ean13,mpn,id_manufacturer,id_category_default,name]",
+            "display": f"[id,ean13,{_mpn_field_name()},id_manufacturer,id_category_default,name]",
             "limit": f"{offset},{limit}",
         })
         products_el = root.find(".//products")
@@ -145,7 +154,7 @@ class PrestashopClient:
             result.append({
                 "id": self._text(p, "id"),
                 "ean13": self._text(p, "ean13"),
-                "mpn": self._text(p, "mpn"),
+                "mpn": self._text(p, _mpn_field_name()),
                 "id_manufacturer": self._text(p, "id_manufacturer"),
                 "id_category_default": self._text(p, "id_category_default"),
                 "name": name,

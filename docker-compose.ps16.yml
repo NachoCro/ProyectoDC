@@ -1,0 +1,52 @@
+# PrestaShop 1.6.1.23 (instancia de prueba aislada, puerto 8081)
+# La imagen oficial no publica 1.6.1.24; 1.6.1.23 es la misma rama 1.6.1.x.
+# Uso: docker compose -f docker-compose.ps16.yml up -d
+services:
+  db16:
+    image: mariadb:10.6
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: prestashop16
+      MYSQL_USER: prestashop16
+      MYSQL_PASSWORD: prestashop16
+    volumes:
+      - db16_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - psnet16
+
+  prestashop16:
+    image: prestashop/prestashop:1.6.1.23
+    depends_on:
+      db16:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    environment:
+      DB_SERVER: db16
+      DB_NAME: prestashop16
+      DB_USER: prestashop16
+      DB_PASSWD: prestashop16
+      ADMIN_MAIL: admin@prestashop.com
+      ADMIN_PASSWD: admin123
+      PS_DOMAIN: localhost:8081
+      PS_FOLDER_ADMIN: admin16
+      PS_LANGUAGE: en
+      PS_COUNTRY: AR
+      PS_INSTALL_AUTO: 1
+      PS_DEV_MODE: 1
+    volumes:
+      - prestashop16_data:/var/www/html
+    networks:
+      - psnet16
+
+volumes:
+  db16_data:
+  prestashop16_data:
+
+networks:
+  psnet16:

@@ -569,6 +569,7 @@ _SETTINGS_KEYS = [
     ("DAEMON_INTERVAL", "Daemon Interval (segundos)"),
     ("PS_COMPAT_81", "PrestaShop 8.1 compat (1=workarounds activos)"),
     ("PS_CREATE_FEATURES", "Crear características nuevas en PS (1=sí, 0=solo usar existentes)"),
+    ("PS_MPN_FIELD", "Campo de modelo en la API (mpn=1.7+; reference para 1.6)"),
 ]
 
 
