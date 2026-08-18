@@ -151,6 +151,7 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
     from .db import write_eav
     from .descriptions import get_description
     from .enrich import _build_description
+    from .spec_extractors import normalize_product, normalize_text
 
     # Ensure product exists in local DB (inserts if missing)
     product = _ensure_product_in_db(pid)
@@ -198,6 +199,9 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
                 proposal = json.loads(proposal_json) if isinstance(proposal_json, str) else proposal_json
             except (json.JSONDecodeError, TypeError):
                 proposal = None
+        if proposal:
+            # Normalize entity-coded / mojibake text before reusing it.
+            proposal = normalize_product(proposal)
 
         # If no proposal exists, we need to fetch data first
         if proposal is None:
@@ -252,6 +256,9 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
             if "description" in missing:
                 chars = proposal.get("caracteristicas") or []
                 merged_chars = merge_characteristics(chars, subcat_name)
+                for ch in merged_chars:
+                    ch["nombre"] = normalize_text(ch.get("nombre") or "")
+                    ch["valor"] = normalize_text(ch.get("valor") or "")
                 desc = _build_description(proposal, merged_chars)
                 if desc:
                     updates["description"] = desc
@@ -261,13 +268,18 @@ def complete_incomplete_product(pid: int, dry_run: bool = False) -> bool:
                 if not desc_short or (isinstance(desc_short, str) and not desc_short.strip()):
                     excel_desc = get_description(subcat_name)
                     if excel_desc.get("descripcion_corta"):
-                        updates["description_short"] = excel_desc["descripcion_corta"]
+                        updates["description_short"] = normalize_text(
+                            excel_desc["descripcion_corta"]
+                        )
 
             # Complete characteristics if missing
             feature_pairs = None
             if "characteristics" in missing:
                 chars = proposal.get("caracteristicas") or []
                 merged_chars = merge_characteristics(chars, subcat_name)
+                for ch in merged_chars:
+                    ch["nombre"] = normalize_text(ch.get("nombre") or "")
+                    ch["valor"] = normalize_text(ch.get("valor") or "")
                 if merged_chars:
                     feature_pairs = client.sync_characteristics_as_features(merged_chars)
 
@@ -367,6 +379,16 @@ def check_all_active(dry_run: bool = False) -> dict:
     completed_count = 0
     failed_count = 0
 
+    conn_target = get_connection()
+    try:
+        target_name = _resolve_target(conn_target)
+    finally:
+        conn_target.close()
+    if target_name:
+        logger.info(
+            "Verificación limitada al objetivo del plan: %r", target_name,
+        )
+
     # Fetch all active products (paginated)
     offset = 0
     limit = 50
@@ -376,6 +398,8 @@ def check_all_active(dry_run: bool = False) -> dict:
             break
 
         for p in products:
+            if not _matches_target(p, target_name):
+                continue
             pid = int(p["id"])
             total += 1
             name = p.get("name") or f"Product {pid}"
@@ -395,6 +419,7 @@ def check_all_active(dry_run: bool = False) -> dict:
                 conn_check.close()
 
             pipeline_state.add_log(f"Verificando producto activo: {name} (id={pid})")
+            logger.info("  Verificando id=%d — %s", pid, name)
 
             # Check completeness
             completeness = check_product_completeness(pid)
@@ -461,6 +486,29 @@ def check_all_active(dry_run: bool = False) -> dict:
     return result
 
 
+def _resolve_target(conn) -> str | None:
+    """Texto objetivo del plan de hoy (tipo de producto), o None.
+
+    La selección de productos se hace por similitud del nombre con este texto
+    (ver ``plan.matches_name``), no por subcategoría exacta.
+    """
+    from . import plan
+    return plan.effective_subcategoria() or None
+
+
+def _matches_target(p: dict, target_name: str | None) -> bool:
+    """¿El producto PrestaShop ``p`` cumple el objetivo del plan?
+
+    Mismo criterio que ``middleware/extract.py``: el nombre del producto debe
+    ser similar al tipo de producto objetivo.
+    """
+    if not target_name:
+        return True
+    from . import plan
+    nombre = p.get("name") or ""
+    return plan.matches_name(target_name, nombre)
+
+
 def _mark_pending_activation(pid: int) -> None:
     """Mark an inactive product as ready to be activated (pendiente_activar = 1)."""
     conn = get_connection()
@@ -501,6 +549,17 @@ def check_inactive_pending(dry_run: bool = False) -> dict:
     completed_count = 0
     failed_count = 0
 
+    conn_target = get_connection()
+    try:
+        target_name = _resolve_target(conn_target)
+    finally:
+        conn_target.close()
+    if target_name:
+        logger.info(
+            "Validación de inactivos limitada al objetivo del plan: %r",
+            target_name,
+        )
+
     offset = 0
     limit = 50
     while True:
@@ -511,6 +570,8 @@ def check_inactive_pending(dry_run: bool = False) -> dict:
         stock = client.get_stock_map([int(p["id"]) for p in products])
 
         for p in products:
+            if not _matches_target(p, target_name):
+                continue
             pid = int(p["id"])
             total += 1
             if stock.get(pid, 0) < 1:
@@ -533,6 +594,7 @@ def check_inactive_pending(dry_run: bool = False) -> dict:
                 conn_check.close()
 
             pipeline_state.add_log(f"Verificando producto inactivo: {name} (id={pid})")
+            logger.info("  Verificando id=%d — %s", pid, name)
 
             completeness = check_product_completeness(pid)
             if completeness["is_complete"]:

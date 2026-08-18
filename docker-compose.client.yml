@@ -1,0 +1,22 @@
+# Servicio por cliente — contenedor aislado con su propio catalogo.db.
+#
+# NO lo levantes directo: aprovisiona primero el cliente:
+#   python scripts/new_client.py --slug tienda1 --host-port 5001 \
+#       --api-url http://host.docker.internal:8080/api --api-key XXXX
+#   docker compose --env-file clients/tienda1/.env \
+#       -f docker-compose.client.yml up -d
+#
+# El archivo clients/<slug>/.env (generado por new_client.py) define:
+#   CLIENT, HOST_PORT, PRESTASHOP_API_URL, PRESTASHOP_API_KEY,
+#   BATCH_SIZE, API_SLEEP, DAEMON_INTERVAL, DAEMON_ARGS, PS_*
+services:
+  middleware:
+    build: .
+    image: dc-middleware:latest
+    container_name: "dc-${CLIENT:?Definí CLIENT en clients/<slug>/.env}"
+    restart: unless-stopped
+    env_file: "clients/${CLIENT}/.env"
+    ports:
+      - "${HOST_PORT}:5000"
+    volumes:
+      - "./clients/${CLIENT}:/data"

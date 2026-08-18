@@ -23,8 +23,6 @@
   </tr>
 {% endmacro %}
 
-{% set changes = namespace(count=0) %}
-
 <div class="diff-page">
   <div class="diff-header">
     <h1 class="diff-header__title">
@@ -139,16 +137,20 @@
         <span class="diff-compare__col diff-compare__col--new">Propuesta</span>
       </div>
       <table class="diff-compare__table">
-        {{ row('Nombre', product.nombre, proposal.get('title') or proposal.get('Titulo')) }}
         {{ row('Marca',  product.marca,  proposal.get('marca')) }}
         {{ row('Modelo', product.modelo, proposal.get('modelo')) }}
         {{ row('EAN',    product.ean,    product.ean) }}
         {{ row('MPN',    product.mpn,    product.mpn) }}
 
+        {# --- Nombre: inmutable, nunca se propone cambio. El título scrapeado
+             no es el nombre del producto (no se aplica al aprobar). --- #}
+        <tr>
+          <th class="dc__label">Nombre</th>
+          <td class="dc dc--same" colspan="2" data-label="Valor">{{ product.nombre or '—' }}</td>
+        </tr>
+
         {# --- Description fields --- #}
         {% for label, key in [
-          ('Título',              'title'),
-          ('Título (traducido)',  'titulo'),
           ('Descripción corta',   'descripcion_corta'),
           ('Descripción',         'descripcion'),
           ('Resumen',             'resumen'),
@@ -167,91 +169,107 @@
     </div>
 
     {# ================================================================ #}
-    {#  CHARACTERISTICS COMPARISON                                       #}
+    {#  CHARACTERISTICS (editables) + ACEPTAR                             #}
     {# ================================================================ #}
-    {% if curr_chars or proposal.get('caracteristicas') %}
-    <div class="diff-section">
-      <h2 class="diff-section__title">
-        Características técnicas
-        {% set cc = curr_chars|list|length %}
-        {% set pc = (proposal.get('caracteristicas') or [])|length %}
-        <span class="diff-section__count">{{ cc }} actuales → {{ pc }} propuestas</span>
-      </h2>
+    {% set curr_map = {} %}
+    {% for c in curr_chars %}
+      {% set _ = curr_map.update({c.nombre_caracteristica: c.valor}) %}
+    {% endfor %}
 
-      {# build a lookup of current chars #}
-      {% set curr_map = {} %}
-      {% for c in curr_chars %}
-        {% set _ = curr_map.update({c.nombre_caracteristica: c.valor}) %}
-      {% endfor %}
+    {% set prop_chars = proposal.get('caracteristicas') or [] %}
+    {% set all_keys = [] %}
+    {% for k in curr_map.keys() %}
+      {% set _ = all_keys.append(k) %}
+    {% endfor %}
+    {% for ch in prop_chars %}
+      {% if ch.nombre not in all_keys %}
+        {% set _ = all_keys.append(ch.nombre) %}
+      {% endif %}
+    {% endfor %}
+    {% if not all_keys %}{% set _ = all_keys.append('') %}{% endif %}
 
-      {# collect all keys #}
-      {% set prop_chars = proposal.get('caracteristicas') or [] %}
-      {% set all_keys = [] %}
-      {% for k in curr_map.keys() %}
-        {% set _ = all_keys.append(k) %}
-      {% endfor %}
-      {% for ch in prop_chars %}
-        {% if ch.nombre not in all_keys %}
-          {% set _ = all_keys.append(ch.nombre) %}
-        {% endif %}
-      {% endfor %}
+    {% set prop_map = {} %}
+    {% for ch in prop_chars %}
+      {% set _ = prop_map.update({ch.nombre: ch.valor}) %}
+    {% endfor %}
 
-      {# build proposed lookup #}
-      {% set prop_map = {} %}
-      {% for ch in prop_chars %}
-        {% set _ = prop_map.update({ch.nombre: ch.valor}) %}
-      {% endfor %}
+    <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
+          class="diff-actions__form diff-approve-form" id="approveForm"
+          data-action="approve">
+      <input type="hidden" name="activate" value="0" id="approveActivate">
 
-      <table class="diff-compare__table">
-        {% for key in all_keys %}
-          {% set cv = curr_map.get(key) %}
-          {% set pv = prop_map.get(key) %}
-          {% if cv != pv %}{% set changes.count = changes.count + 1 %}{% endif %}
-          {{ row(key, cv, pv) }}
-        {% endfor %}
-      </table>
-    </div>
-    {% endif %}
-
-    {# ================================================================ #}
-    {#  ACTIONS                                                          #}
-    {# ================================================================ #}
-    <div class="diff-actions">
-      <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
-            data-action="activate"
-            class="diff-actions__form">
-        <input type="hidden" name="activate" value="1">
-        <button class="btn btn--activate btn--lg">
-          Aprobar y activar en PrestaShop
-        </button>
-        <p class="diff-actions__hint">
-          Activa el producto (<strong>active = 1</strong>), actualiza
-          descripción y características, y marca como sincronizado.
+      <div class="diff-section">
+        <h2 class="diff-section__title">
+          Características técnicas
+          <span class="diff-section__count">{{ curr_chars|list|length }} actuales → {{ prop_chars|length }} propuestas</span>
+        </h2>
+        <p class="settings-hint" style="margin:0 0 0.8rem;">
+          Editá nombres y valores, eliminá filas o agregá características antes de aceptar.
         </p>
-      </form>
+        <table class="diff-compare__table" id="charsTable">
+          <thead>
+            <tr>
+              <th class="dc__label">Nombre</th>
+              <th>Actual (PrestaShop)</th>
+              <th>Valor propuesto</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key in all_keys %}
+            <tr class="char-row">
+              <td>
+                <input class="char-input char-input--name" type="text"
+                       name="char_name[]" value="{{ key }}" placeholder="Nombre">
+              </td>
+              <td class="dc dc--old">{{ curr_map.get(key) or '—' }}</td>
+              <td>
+                <input class="char-input char-input--value" type="text"
+                       name="char_value[]" value="{{ prop_map.get(key) or '' }}" placeholder="Valor">
+              </td>
+              <td>
+                <button type="button" class="btn btn--sm char-del"
+                        title="Eliminar característica">✕</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="button" class="btn btn--sync btn--sm" id="charAdd">
+          + Agregar característica
+        </button>
+      </div>
 
-      <form method="post" action="{{ url_for('approve', pid=product.id_prestashop) }}"
-            data-action="approve"
-            class="diff-actions__form">
-        <input type="hidden" name="activate" value="0">
-        <button class="btn btn--approve btn--lg">
-          Aprobar (sin activar)
+      {# ================================================================ #}
+      {#  ACCEPT ACTIONS                                                   #}
+      {# ================================================================ #}
+      <div class="diff-actions">
+        <button type="submit" class="btn btn--approve btn--lg" data-activate="0">
+          Aceptar
         </button>
         <p class="diff-actions__hint">
-          Solo actualiza descripción y características en PrestaShop.
+          Publica la descripción y las características editadas en PrestaShop.
           El producto <strong>no se activa</strong>.
         </p>
-      </form>
 
+        <button type="submit" class="btn btn--activate btn--lg" data-activate="1">
+          Aceptar y activar en PrestaShop
+        </button>
+        <p class="diff-actions__hint">
+          Igual que aceptar, pero además activa el producto
+          (<strong>active = 1</strong>).
+        </p>
+      </div>
+    </form>
+
+    <div class="diff-actions">
       <form method="post" action="{{ url_for('reject', pid=product.id_prestashop) }}"
-            data-action="reject"
-            class="diff-actions__form">
+            data-action="reject" class="diff-actions__form">
         <button class="btn btn--reject btn--lg">Rechazar propuesta</button>
       </form>
 
       <form method="post" action="{{ url_for('re_sync', pid=product.id_prestashop) }}"
-            data-action="re-sync"
-            class="diff-actions__form">
+            data-action="re-sync" class="diff-actions__form">
         <button class="btn btn--sync btn--lg">Re-sincronizar</button>
       </form>
     </div>
@@ -260,19 +278,19 @@
 
 <script>
 function confirmApproval() {
-  var msg = '¿Aprobar (sin activar)?\n\n'
-          + '• Actualizar descripción\n'
-          + '• Escribir características técnicas\n'
+  var msg = '¿Aceptar?\n\n'
+          + '• Publicar descripción\n'
+          + '• Publicar características (según lo editado)\n'
           + '• Marcar como sincronizado\n'
           + '• El producto NO se activa en PrestaShop\n\n'
           + '¿Confirmar?';
   return confirm(msg);
 }
 function confirmActivate() {
-  var msg = '¿Aprobar y activar en PrestaShop?\n\n'
+  var msg = '¿Aceptar y activar en PrestaShop?\n\n'
           + '• Activar producto (active = 1)\n'
-          + '• Actualizar descripción\n'
-          + '• Escribir características técnicas\n'
+          + '• Publicar descripción\n'
+          + '• Publicar características (según lo editado)\n'
           + '• Marcar como sincronizado\n\n'
           + '¿Confirmar?';
   return confirm(msg);
@@ -323,8 +341,8 @@ var ACTION_CONFIRMS = {
   }
 };
 
-function submitActionForm(form) {
-  var action = form.getAttribute('data-action');
+function submitActionForm(form, action) {
+  action = action || form.getAttribute('data-action');
   var confirmFn = ACTION_CONFIRMS[action];
   if (confirmFn && !confirmFn()) return;
   var btn = form.querySelector('button[type="submit"]');
@@ -352,7 +370,49 @@ function submitActionForm(form) {
   });
 }
 
-var actionForms = document.querySelectorAll('form.diff-actions__form');
+// Editable characteristics: add / delete rows
+var charsTable = document.getElementById('charsTable');
+var charAdd = document.getElementById('charAdd');
+if (charsTable && charAdd) {
+  function newCharRow() {
+    var tr = document.createElement('tr');
+    tr.className = 'char-row';
+    tr.innerHTML =
+      '<td><input class="char-input char-input--name" type="text" name="char_name[]" value="" placeholder="Nombre"></td>' +
+      '<td class="dc dc--old">—</td>' +
+      '<td><input class="char-input char-input--value" type="text" name="char_value[]" value="" placeholder="Valor"></td>' +
+      '<td><button type="button" class="btn btn--sm char-del" title="Eliminar característica">✕</button></td>';
+    return tr;
+  }
+  charAdd.addEventListener('click', function() {
+    charsTable.querySelector('tbody').appendChild(newCharRow());
+  });
+  charsTable.addEventListener('click', function(e) {
+    var del = e.target.closest ? e.target.closest('.char-del') : null;
+    if (del) {
+      var tr = del.closest ? del.closest('tr') : null;
+      if (tr) tr.parentNode.removeChild(tr);
+    }
+  });
+}
+
+// Approve form: two buttons (Aceptar / Aceptar y activar) share the same
+// form; the activate value is set before submitting so edited characteristics
+// are posted with the accept.
+var approveForm = document.getElementById('approveForm');
+if (approveForm) {
+  var approveActivate = document.getElementById('approveActivate');
+  approveForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var submitter = e.submitter || approveForm.querySelector('button[data-activate]');
+    var activate = submitter && submitter.getAttribute('data-activate') === '1' ? '1' : '0';
+    approveActivate.value = activate;
+    submitActionForm(approveForm, activate === '1' ? 'activate' : 'approve');
+  });
+}
+
+// Other action forms (reject / re-sync): plain submission.
+var actionForms = document.querySelectorAll('form.diff-actions__form:not(#approveForm)');
 for (var i = 0; i < actionForms.length; i++) {
   actionForms[i].addEventListener('submit', function(e) {
     e.preventDefault();

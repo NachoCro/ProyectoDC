@@ -10,7 +10,7 @@ from xml.etree.ElementTree import Element, SubElement
 
 import requests
 
-from middleware.config import API_SLEEP, get_config
+from middleware.config import API_SLEEP, api_timeout, get_config
 from middleware.prestashop import PrestashopClient, PrestashopError
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,11 @@ _READ_ONLY_FIELDS = {
     "id_default_combination", "quantity",
     "id_supplier",
 }
+
+# Fields that must NEVER be modified by the middleware.  The product name is
+# owned by PrestaShop (source of truth) and the enrichment/approval pipeline
+# must not rename products — a scotch tape must not become a "Redmi 15C".
+_IMMUTABLE_FIELDS = {"name", "link_rewrite"}
 
 
 def _wrap_language_cdata(xml_str: str) -> str:
@@ -147,7 +152,7 @@ class AdminPrestashopClient(PrestashopClient):
         resp = self._session.get(
             f"{self._base}/products/{product_id}",
             params={"output_format": "JSON"},
-            timeout=30,
+            timeout=api_timeout(),
         )
         resp.raise_for_status()
         time.sleep(API_SLEEP)
@@ -237,6 +242,8 @@ class AdminPrestashopClient(PrestashopClient):
 
         for key, value in updates.items():
             if value is None:
+                continue
+            if key in _IMMUTABLE_FIELDS:
                 continue
             self._set_field(product_el, key, str(value))
 
@@ -556,7 +563,7 @@ class AdminPrestashopClient(PrestashopClient):
 
         # Download
         try:
-            img_resp = requests.get(image_url, timeout=30)
+            img_resp = requests.get(image_url, timeout=90)
             img_resp.raise_for_status()
         except requests.RequestException as exc:
             logger.warning("Failed to download image %s: %s", image_url, exc)

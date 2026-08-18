@@ -22,6 +22,7 @@ _KEYS = [
     "daemon_last_result",
     "daemon_logs",
     "daemon_stop",
+    "pipeline_progress",
 ]
 
 _DEFAULTS = {
@@ -37,6 +38,7 @@ _DEFAULTS = {
     "daemon_last_result": "",
     "daemon_logs": "[]",
     "daemon_stop": "0",
+    "pipeline_progress": "",
 }
 
 
@@ -125,6 +127,15 @@ def log(msg: str) -> None:
     _append_log(msg)
 
 
+def set_pipeline_progress(progress: dict) -> None:
+    """Persist pipeline progress (run-once / daemon pipeline) as JSON.
+
+    Escrito por ``pipeline_state`` (mismo proceso o daemon subproceso) y
+    leído por el dashboard vía ``get_state()`` — funciona entre procesos.
+    """
+    _set("pipeline_progress", json.dumps(progress))
+
+
 def cycle_done(result: dict) -> None:
     """Mark a verification cycle as complete."""
     cycle = int(_get("daemon_cycle") or "0") + 1
@@ -166,6 +177,14 @@ def get_state() -> dict:
     except (json.JSONDecodeError, TypeError):
         logs = []
 
+    pipeline_raw = _get("pipeline_progress")
+    pipeline = None
+    if pipeline_raw:
+        try:
+            pipeline = json.loads(pipeline_raw)
+        except (json.JSONDecodeError, TypeError):
+            pipeline = None
+
     last_result = None
     if last_result_raw:
         try:
@@ -185,4 +204,5 @@ def get_state() -> dict:
         "last_check_at": float(last_check_raw) if last_check_raw else None,
         "last_result": last_result,
         "pid": int(pid_raw) if pid_raw else None,
+        "pipeline": pipeline,
     }

@@ -3,9 +3,26 @@ import time
 import xml.etree.ElementTree as ET
 
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 
-from .config import API_SLEEP, PRESTASHOP_API_KEY, PRESTASHOP_API_URL, get_config
+from .config import (
+    API_SLEEP,
+    PRESTASHOP_API_KEY,
+    PRESTASHOP_API_URL,
+    api_timeout,
+    get_config,
+)
+
+
+def _api_retries() -> int:
+    """Max retries for a single PrestaShop API call (config ``PS_API_RETRIES``)."""
+    raw = (get_config("PS_API_RETRIES", "3") or "3").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +54,68 @@ class PrestashopClient:
         self._session = requests.Session()
         self._session.auth = self._auth
         self._session.headers.update({"Accept": "application/xml"})
+        # No keep-alive: cada request abre una conexión nueva.  Entre pasos de
+        # enrichment (Selenium puede tardar minutos) el servidor cierra los
+        # sockets keep-alive inactivos y el siguiente request reusa un socket
+        # muerto → RemoteDisconnected.  Con "Connection: close" eso no puede
+        # pasar; los retries quedan solo para errores transitorios reales.
+        self._session.headers["Connection"] = "close"
+        self._install_retries()
+        self._install_request_logging()
+
+    def _install_retries(self) -> None:
+        """Mount an HTTPAdapter that retries transient failures.
+
+        ``RemoteDisconnected`` (the server closing an idle keep-alive socket,
+        common between long enrichment steps) and 5xx responses are retried
+        with exponential backoff instead of failing the whole run-once.
+        """
+        retries = _api_retries()
+        if retries <= 0:
+            return
+        adapter = HTTPAdapter(
+            max_retries=Retry(
+                total=retries,
+                connect=retries,
+                read=retries,
+                status=retries,
+                backoff_factor=1.0,
+                status_forcelist=(500, 502, 503, 504),
+                allowed_methods=frozenset({"GET", "PUT", "POST"}),
+            )
+        )
+        self._session.mount("http://", adapter)
+        self._session.mount("https://", adapter)
+
+    def _install_request_logging(self) -> None:
+        """Emitir un log DEBUG por cada request a PrestaShop.
+
+        El detalle de cada llamada HTTP se registra a nivel DEBUG para no
+        inundar la consola; la terminal muestra el progreso real del pipeline
+        (``enrich.py``: producto en enriquecimiento).  Se aplica a
+        ``session.get/post/put`` — también al ``AdminPrestashopClient``.
+        """
+        orig_request = self._session.request
+        base = self._base
+
+        def _logged_request(method: str, url: str, **kwargs):
+            short = url.replace(base, "").split("?")[0]
+            logger.debug("PS %s %s ...", method.upper(), short)
+            t0 = time.time()
+            try:
+                resp = orig_request(method, url, **kwargs)
+            except Exception:
+                logger.debug(
+                    "PS %s %s — ERROR (%.1fs)", method.upper(), short, time.time() - t0,
+                )
+                raise
+            logger.debug(
+                "PS %s %s — %s (%.1fs)",
+                method.upper(), short, resp.status_code, time.time() - t0,
+            )
+            return resp
+
+        self._session.request = _logged_request
 
     # ------------------------------------------------------------------
     # internal helpers
@@ -46,7 +125,7 @@ class PrestashopClient:
         url = f"{self._base}/{resource}"
         logger.debug("GET %s %s", url, params or "")
         try:
-            resp = self._session.get(url, params=params, timeout=30)
+            resp = self._session.get(url, params=params, timeout=api_timeout())
             resp.raise_for_status()
         except requests.RequestException as exc:
             status = getattr(exc, "response", None)

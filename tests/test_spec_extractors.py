@@ -178,3 +178,87 @@ def test_extract_body_text_specs():
     assert by_name["Peso"] == "1.2 kg"
     assert "Precio" not in by_name
     assert "tamaño" not in by_name
+
+
+class _FakeResp:
+    def __init__(self, content, encoding=None, apparent_encoding=None):
+        self.content = content
+        self.encoding = encoding
+        self.apparent_encoding = apparent_encoding
+
+
+def test_decode_response_utf8_no_charset_header():
+    body = "<html><body><p>Resolución 4K — ñandú</p></body></html>"
+    resp = _FakeResp(body.encode("utf-8"), encoding=None)
+    assert se.decode_response(resp) == body
+
+
+def test_decode_response_meta_charset_beats_latin_header():
+    body = (
+        '<html><head><meta charset="utf-8"></head>'
+        "<body><p>Resolución 4K — ñandú</p></body></html>"
+    )
+    resp = _FakeResp(body.encode("utf-8"), encoding="ISO-8859-1")
+    assert se.decode_response(resp) == body
+
+
+def test_decode_response_header_charset_honored():
+    body = '<html><body><p>Größe: 55"</p></body></html>'
+    resp = _FakeResp(body.encode("iso-8859-1"), encoding="ISO-8859-1")
+    out = se.decode_response(resp)
+    assert "Größe" in out
+
+
+def test_decode_response_apparent_encoding_fallback():
+    body = '<html><body><p>Déjà vu — 100%</p></body></html>'
+    resp = _FakeResp(body.encode("utf-8"), encoding=None,
+                     apparent_encoding="utf-8")
+    assert se.decode_response(resp) == body
+
+
+def test_decode_response_empty_body():
+    resp = _FakeResp(b"")
+    assert se.decode_response(resp) == ""
+
+
+def test_normalize_text_decodes_html_entities():
+    assert se.normalize_text("Encontr&#225; en Space &#128640;") == "Encontrá en Space 🚀"
+    assert se.normalize_text('Estuche &quot;Tomo&quot;') == 'Estuche "Tomo"'
+    assert se.normalize_text("CADENA 3/8&#039;&#039; 1.3mm") == "CADENA 3/8'' 1.3mm"
+    assert se.normalize_text("B&amp;s") == "B&s"
+    assert se.normalize_text("OSLO&nbsp;es &amp;nbsp;") == "OSLO\u00a0es \u00a0"
+
+
+def test_normalize_text_repairs_mojibake():
+    assert se.normalize_text("caracterÃ\xadsticas") == "características"
+    assert se.normalize_text("resoluciÃ³n Full HD+") == "resolución Full HD+"
+    assert se.normalize_text("diseÃ±ado") == "diseñado"
+    # double-encoded numeric entities
+    assert se.normalize_text("&#195;&#179;") == "ó"
+
+
+def test_normalize_text_leaves_clean_text_untouched():
+    assert se.normalize_text("Resolución y configuración — correcto") == "Resolución y configuración — correcto"
+    assert se.normalize_text("Mejorá el rendimiento") == "Mejorá el rendimiento"
+    assert se.normalize_text("") == ""
+    assert se.normalize_text(None) is None
+
+
+def test_normalize_product_recursive():
+    data = {
+        "title": "Filtro de Aire B&amp;s",
+        "descripcion": "caracterÃ\xadsticas",
+        "caracteristicas": [
+            {"nombre": "Resoluci&#243;n", "valor": "4K"},
+            {"nombre": "Marca", "valor": "diseÃ±ado en ES"},
+        ],
+        "imagen_urls": ["http://x/a.png"],
+    }
+    out = se.normalize_product(data)
+    assert out["title"] == "Filtro de Aire B&s"
+    assert out["descripcion"] == "características"
+    assert out["caracteristicas"][0] == {"nombre": "Resolución", "valor": "4K"}
+    assert out["caracteristicas"][1]["valor"] == "diseñado en ES"
+
+
+

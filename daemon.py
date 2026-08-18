@@ -6,6 +6,8 @@ productos activos periódicamente.
 
 Usage:
     python daemon.py [-v] [--interval SECONDS] [--dry-run] [--check-inactive]
+                     [--extract-scope inactive|active|both] [--modo publicar|preparar]
+                     [--skip-extract] [--no-initial-pipeline]
 
 El intervalo por defecto es DAEMON_INTERVAL de config (300 segundos = 5 min).
 
@@ -42,29 +44,34 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-def _run_initial_pipeline(dry_run: bool) -> None:
+def _run_initial_pipeline(dry_run: bool, override: dict | None,
+                          skip_extract: bool = False) -> None:
     """Ejecuta extracción + enriquecimiento al iniciar el daemon."""
     from middleware.enrich import run as run_enrich
     from middleware.extract import run as run_extraction
 
     logger.info("=== Fase inicial: Extracción + Enriquecimiento ===")
 
-    try:
-        daemon_state.set_phase("extraction")
-        pending = run_extraction(dry_run=dry_run)
-        logger.info(
-            "Extracción finalizada. %d productos pendientes de enriquecimiento.",
-            len(pending),
-        )
-        daemon_state.log(f"Extracción: {len(pending)} productos pendientes")
-    except Exception:
-        logger.exception("Error durante la extracción inicial")
-        daemon_state.log("ERROR en extracción inicial")
-        return
+    if skip_extract:
+        logger.info("Extracción omitida (skip_extract)")
+        daemon_state.log("Extracción omitida (solo enriquecer)")
+    else:
+        try:
+            daemon_state.set_phase("extraction")
+            pending = run_extraction(dry_run=dry_run, override=override)
+            logger.info(
+                "Extracción finalizada. %d productos pendientes de enriquecimiento.",
+                len(pending),
+            )
+            daemon_state.log(f"Extracción: {len(pending)} productos pendientes")
+        except Exception:
+            logger.exception("Error durante la extracción inicial")
+            daemon_state.log("ERROR en extracción inicial")
+            return
 
     try:
         daemon_state.set_phase("enrichment")
-        enriched = run_enrich(dry_run=dry_run)
+        enriched = run_enrich(dry_run=dry_run, override=override)
         logger.info("Enriquecimiento finalizado. %d productos procesados.", enriched)
         daemon_state.log(f"Enriquecimiento: {enriched} productos procesados")
     except Exception:
@@ -73,15 +80,42 @@ def _run_initial_pipeline(dry_run: bool) -> None:
         return
 
 
-def run_daemon(interval: int, dry_run: bool, check_inactive: bool = False) -> None:
-    """Run the daemon loop."""
+def run_daemon(
+    interval: int,
+    dry_run: bool,
+    check_inactive: bool = False,
+    no_initial_pipeline: bool = False,
+    extract_scope: str | None = None,
+    modo: str | None = None,
+    skip_extract: bool = False,
+) -> None:
+    """Run the daemon loop.
+
+    Las opciones avanzadas de la fase inicial (``extract_scope``, ``modo``,
+    ``skip_extract``) ganan sobre las del plan cuando se pasan explícitamente;
+    si no, el daemon aplica las opciones guardadas en el plan (agenda).  El
+    ``dry_run`` de la fase inicial se activa también si el plan pide simular.
+    """
+    from middleware import plan
     from middleware.check_active import check_all_active, check_inactive_pending
 
     daemon_state.start(interval, dry_run, check_inactive)
     daemon_state.set_pid(os.getpid())
 
     # ---- Fase inicial: extracción + enriquecimiento -------------------------
-    _run_initial_pipeline(dry_run=dry_run)
+    if not no_initial_pipeline:
+        override = {
+            "scope": extract_scope or plan.effective_scope(),
+            "modo": modo or plan.effective_modo(),
+        }
+        _run_initial_pipeline(
+            dry_run=dry_run or plan.effective_dry_run(),
+            override=override,
+            skip_extract=skip_extract or plan.effective_skip_extract(),
+        )
+    else:
+        logger.info("Fase inicial omitida (--no-initial-pipeline)")
+        daemon_state.log("Arranque sin extracción/enriquecimiento inicial")
 
     # ---- Loop de verificación continua --------------------------------------
     logger.info(
@@ -170,6 +204,30 @@ def main() -> None:
         action="store_true",
         help="Validar productos inactivos con stock y marcarlos como listos para activar",
     )
+    parser.add_argument(
+        "--no-initial-pipeline",
+        action="store_true",
+        help="No ejecutar la fase inicial de extracción + enriquecimiento al arrancar",
+    )
+    parser.add_argument(
+        "--extract-scope",
+        choices=("inactive", "active", "both"),
+        default=None,
+        help="Qué catálogo barrer en la extracción inicial "
+             "(default: plan, inactive)",
+    )
+    parser.add_argument(
+        "--modo",
+        choices=("publicar", "preparar"),
+        default=None,
+        help="Modo de enriquecimiento inicial: publicar (default) o preparar "
+             "(guardar propuesta sin modificar PrestaShop)",
+    )
+    parser.add_argument(
+        "--skip-extract",
+        action="store_true",
+        help="Saltar la extracción en la fase inicial (solo enriquecer)",
+    )
     args = parser.parse_args()
 
     _setup_logging(args.verbose)
@@ -179,7 +237,15 @@ def main() -> None:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _signal_handler)
 
-    run_daemon(interval=args.interval, dry_run=args.dry_run, check_inactive=args.check_inactive)
+    run_daemon(
+        interval=args.interval,
+        dry_run=args.dry_run,
+        check_inactive=args.check_inactive,
+        no_initial_pipeline=args.no_initial_pipeline,
+        extract_scope=args.extract_scope,
+        modo=args.modo,
+        skip_extract=args.skip_extract,
+    )
 
 
 if __name__ == "__main__":

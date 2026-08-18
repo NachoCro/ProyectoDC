@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión — Panel de la tienda</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .login-wrap { max-width: 380px; margin: 10vh auto 0; padding: 0 24px; }
+    .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+    .login-card h1 { font-size: 20px; margin: 0 0 4px; }
+    .login-card .login-sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+    .login-error { background: #fee2e2; color: var(--red); border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; }
+    .login-actions { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+    .login-hint { color: var(--muted); font-size: 13px; margin-top: 16px; text-align: center; }
+    .login-hint a { color: var(--blue); }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>Panel de la tienda</h1>
+      <p class="login-sub">Iniciá sesión para continuar</p>
+
+      {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+
+      <form method="post" class="settings-form">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <div class="settings-field">
+          <label for="usuario">Usuario</label>
+          <input id="usuario" name="usuario" autocomplete="username" required autofocus>
+        </div>
+        <div class="settings-field">
+          <label for="clave">Contraseña</label>
+          <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="login-actions">
+          <button class="btn btn--primary btn--lg" type="submit">Entrar</button>
+        </div>
+      </form>
+
+      {% if not hay_usuarios %}
+      <p class="login-hint">Primera vez: <a href="{{ url_for('setup') }}">crear el usuario administrador</a></p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

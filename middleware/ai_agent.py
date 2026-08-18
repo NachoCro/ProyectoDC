@@ -105,7 +105,7 @@ def _fetch(url: str) -> str | None:
     try:
         resp = _SESSION.get(url, timeout=30)
         resp.raise_for_status()
-        return resp.text
+        return spec_extractors.decode_response(resp)
     except requests.RequestException as exc:
         logger.debug("  AI_AGENT  fetch failed %s: %s", url, exc)
         return None
@@ -336,7 +336,88 @@ def _parse_page(html: str, current_url: str = "") -> dict | None:
     if current_url:
         result["url"] = current_url
 
+    # Normalize entity-coded / mojibake text from the source page before it
+    # reaches the proposal (accents must arrive as real characters).
+    spec_extractors.normalize_product(result)
+
     return result
+
+
+_MODEL_TOKEN_RE = re.compile(r'[A-Z]+\d+[A-Z]+\d+[-]?[A-Z]*')
+_SHORT_MODEL_RE = re.compile(
+    r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{2,4}[A-Z]?(?![A-Za-z0-9])'
+)
+
+
+def _model_tokens(nombre: str) -> list[str]:
+    """Extract model-number tokens from a product name.
+
+    Examples: "TV TCL 55 SMART L55P735-F" → ["L55P735-F", "L55P735"],
+    "Samsung Galaxy S21 5G" → ["S21"]. Longest-first, deduplicated.
+    """
+    if not nombre:
+        return []
+    tokens = _MODEL_TOKEN_RE.findall(nombre) + _SHORT_MODEL_RE.findall(nombre)
+    tokens = list(dict.fromkeys(tokens))
+    tokens.sort(key=len, reverse=True)
+    return tokens
+
+
+_RESELLER_PATTERNS = (
+    "mercadolibre", "amazon", "bestbuy", "walmart", "ebay", "mediaworld",
+    "fravega", "garbarino", "musimundo", "tiendamia", "atida",
+)
+
+
+def _score_candidate(data: dict, marca: str, nombre: str) -> float:
+    """Score how coherent a scraped candidate is with the expected product.
+
+    Rewards: characteristics richness, model tokens present in the title/URL,
+    brand match, official-domain and spec-page signals.
+    Penalizes: manual/support pages and reseller domains.
+    """
+    score = 0.0
+    url = (data.get("url") or "").lower()
+    title = (data.get("title") or data.get("titulo") or "").lower()
+
+    chars = len(data.get("caracteristicas") or [])
+    score += min(chars, 20) * 0.5
+
+    tokens = _model_tokens(nombre)
+    title_norm = title.replace("-", "").replace(" ", "")
+    url_norm = url.replace("-", "").replace("_", "").replace("/", "")
+    matched = sum(1 for t in tokens if t.replace("-", "") in title_norm)
+    if matched:
+        score += 3 + matched
+    if any(t.replace("-", "") in url_norm for t in tokens):
+        score += 2
+
+    scraped_marca = (data.get("marca") or "").lower()
+    if marca and scraped_marca:
+        if marca.lower() in scraped_marca or scraped_marca in marca.lower():
+            score += 2
+
+    if marca and marca.lower() in url:
+        score += 3
+    if any(s in url for s in (
+        "especificacion", "specs", "specification", "ficha-tecnica",
+        "datasheet", "technical",
+    )):
+        score += 2
+    if any(s in title for s in (
+        "especificacion", "specs", "specification", "ficha", "datasheet",
+        "technical",
+    )):
+        score += 1
+
+    if any(p in url for p in (
+        "manual", "soporte", "support", "faq", "guia", "tutorial",
+    )):
+        score -= 3
+    if any(p in url for p in _RESELLER_PATTERNS):
+        score -= 4
+
+    return score
 
 
 def _build_search_query(marca: str, nombre: str) -> str:
@@ -354,23 +435,7 @@ def _build_search_query(marca: str, nombre: str) -> str:
     if not nombre:
         return f"{marca} especificaciones" if marca else "especificaciones"
 
-    # Extract model numbers - patterns like L55P735-F, SM-G991B, DCP-1617NW, OLED55C4PSA
-    # Pattern: letter(s) + digits + letter(s) + digits + optional dash/letter suffix
-    model_patterns = re.findall(
-        r'[A-Z]+\d+[A-Z]+\d+[-]?[A-Z]*', nombre, re.IGNORECASE
-    )
-
-    # Pattern 2: Short standalone model identifiers (e.g. "S21", "P735", "M50F")
-    # Must have at least one letter and one digit
-    short_models = re.findall(
-        r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{2,4}[A-Z]?(?![A-Za-z0-9])',
-        nombre, re.IGNORECASE
-    )
-
-    # Combine and deduplicate, preferring longer matches
-    all_models = list(dict.fromkeys(model_patterns + short_models))
-    # Sort by length (longest first) to prefer more specific models
-    all_models.sort(key=len, reverse=True)
+    all_models = _model_tokens(nombre)
 
     if all_models:
         # Use the first (most specific) model number
@@ -398,11 +463,23 @@ def _build_search_query(marca: str, nombre: str) -> str:
     return query
 
 
-def enrich_with_ai(marca: str, nombre: str) -> dict | None:
+def enrich_with_ai(
+    marca: str,
+    nombre: str,
+    max_results: int = 5,
+    accept=None,
+) -> dict | None:
     """Search the web and scrape official product data (no LLM).
 
     Uses the product name (which already contains brand + model) as the
-    primary search term.
+    primary search term.  Collects a candidate from every search result,
+    scores each for coherence with the product name (model tokens in the
+    title/URL, official-domain and spec-page signals, brand match), and:
+
+    - if ``accept`` is given (a ``callable(data) -> bool``), returns the
+      highest-scoring candidate that passes it — rejected candidates are
+      skipped, so a bad first hit no longer abandons the remaining results;
+    - otherwise returns the single highest-scoring candidate.
 
     Parameters
     ----------
@@ -410,6 +487,10 @@ def enrich_with_ai(marca: str, nombre: str) -> dict | None:
         Brand name (e.g. "Samsung").
     nombre:
         Product name from PrestaShop (e.g. "Galaxy S21 5G").
+    max_results:
+        Number of web results to consider.
+    accept:
+        Optional validator callback used to pick among ranked candidates.
 
     Returns
     -------
@@ -419,10 +500,12 @@ def enrich_with_ai(marca: str, nombre: str) -> dict | None:
     query = _build_search_query(marca, nombre)
     logger.info("  AI_AGENT  searching: %s", query)
 
-    results = _search_web(query, max_results=5)
+    results = _search_web(query, max_results=max_results)
     if not results:
         logger.info("  AI_AGENT  no search results for: %s", query)
         return None
+
+    candidates: list[tuple[float, dict]] = []
 
     for r in results:
         url = r.get("href") or r.get("link") or ""
@@ -438,66 +521,92 @@ def enrich_with_ai(marca: str, nombre: str) -> dict | None:
 
         # First try simple HTTP fetch
         html = _fetch(url)
-        http_data = None
+        data = None
         if html and len(html) >= 500:
-            http_data = _parse_page(html, url)
-            if http_data and (http_data.get("caracteristicas") or http_data.get("descripcion")):
-                if not http_data.get("marca"):
-                    http_data["marca"] = marca
-                if not http_data.get("modelo"):
-                    http_data["modelo"] = ""
-                # If we got characteristics, return immediately
-                if http_data.get("caracteristicas"):
-                    logger.info(
-                        "  AI_AGENT  extracted %d characteristics from %s (http)",
-                        len(http_data["caracteristicas"]), url,
-                    )
-                    return http_data
+            data = _parse_page(html, url)
 
-        # Fallback: try Selenium for JS-heavy pages (when no characteristics from HTTP)
-        logger.info("  AI_AGENT  trying Selenium for: %s", url)
-        html_selenium = _fetch_with_selenium(url)
-        if html_selenium and len(html_selenium) >= 500:
-            selenium_data = _parse_page(html_selenium, url)
-            if selenium_data and (selenium_data.get("caracteristicas") or selenium_data.get("descripcion")):
-                if not selenium_data.get("marca"):
-                    selenium_data["marca"] = marca
-                if not selenium_data.get("modelo"):
-                    selenium_data["modelo"] = ""
-                # Prefer Selenium result if it has characteristics
-                if selenium_data.get("caracteristicas"):
-                    logger.info(
-                        "  AI_AGENT  extracted %d characteristics from %s (selenium)",
-                        len(selenium_data["caracteristicas"]), url,
-                    )
-                    return selenium_data
-                # If both have only descriptions (no characteristics), prefer HTTP
-                elif http_data:
-                    logger.info(
-                        "  AI_AGENT  using HTTP result (no characteristics from either source)",
-                    )
-                    return http_data
-                else:
-                    return selenium_data
+        # Fallback: try Selenium for JS-heavy pages (only when HTTP gave no
+        # characteristics — otherwise the extra headless browser is wasted).
+        if data is None or not data.get("caracteristicas"):
+            logger.info("  AI_AGENT  trying Selenium for: %s", url)
+            html_selenium = _fetch_with_selenium(url)
+            if html_selenium and len(html_selenium) >= 500:
+                selenium_data = _parse_page(html_selenium, url)
+                if selenium_data is not None:
+                    if data is None:
+                        data = selenium_data
+                    elif len(selenium_data.get("caracteristicas") or []) > len(
+                        data.get("caracteristicas") or []
+                    ):
+                        data = selenium_data
+
+        if data is None:
+            continue
+        if not data.get("marca"):
+            data["marca"] = marca
+        if not data.get("modelo"):
+            data["modelo"] = ""
+        if not (data.get("caracteristicas") or data.get("descripcion")):
+            continue
+
+        score = _score_candidate(data, marca, nombre)
+        logger.info(
+            "  AI_AGENT  candidate score=%.1f (%d características): %s",
+            score, len(data.get("caracteristicas") or []), url[:80],
+        )
+        candidates.append((score, data))
 
     # ── Brand-specific fallback: try official website directly ────────────
     # For brands with predictable URL patterns, try the official site directly
     # if web search didn't find it.
     if marca:
-        brand_urls = _get_brand_official_urls(marca, nombre)
-        for official_url in brand_urls:
+        for official_url in _get_brand_official_urls(marca, nombre):
             logger.info("  AI_AGENT  trying official URL: %s", official_url)
             html_official = _fetch_with_selenium(official_url)
             if html_official and len(html_official) >= 500:
                 data_official = _parse_page(html_official, official_url)
-                if data_official and data_official.get("caracteristicas"):
+                if data_official:
                     if not data_official.get("marca"):
                         data_official["marca"] = marca
-                    logger.info(
-                        "  AI_AGENT  extracted %d characteristics from official URL %s",
-                        len(data_official["caracteristicas"]), official_url,
-                    )
-                    return data_official
+                    if data_official.get("caracteristicas"):
+                        score = _score_candidate(
+                            data_official, marca, nombre
+                        ) + 5  # official-site boost
+                        logger.info(
+                            "  AI_AGENT  official candidate score=%.1f (%d características)",
+                            score, len(data_official.get("caracteristicas") or []),
+                        )
+                        candidates.append((score, data_official))
 
-    logger.info("  AI_AGENT  no product data found for %s %s", marca, nombre)
-    return None
+    if not candidates:
+        logger.info("  AI_AGENT  no product data found for %s %s", marca, nombre)
+        return None
+
+    candidates.sort(key=lambda c: c[0], reverse=True)
+
+    if accept is not None:
+        for score, data in candidates:
+            try:
+                ok = bool(accept(data))
+            except Exception as exc:  # validator must never crash the pipeline
+                logger.debug("  AI_AGENT  validator raised: %s", exc)
+                ok = False
+            if ok:
+                logger.info(
+                    "  AI_AGENT  accepted candidate (score=%.1f): %s",
+                    score, (data.get("url") or "")[:80],
+                )
+                return data
+            logger.info(
+                "  AI_AGENT  candidate rejected by validator (score=%.1f): %s",
+                score, (data.get("url") or "")[:80],
+            )
+        logger.info("  AI_AGENT  no candidate passed validation for %s %s", marca, nombre)
+        return None
+
+    best_score, best_data = candidates[0]
+    logger.info(
+        "  AI_AGENT  choosing best candidate (score=%.1f): %s",
+        best_score, (best_data.get("url") or "")[:80],
+    )
+    return best_data

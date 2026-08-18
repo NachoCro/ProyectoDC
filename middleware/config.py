@@ -16,6 +16,8 @@ DEFAULTS = {
     "PS_COMPAT_81": "1",  # PrestaShop 8.1 PUT workarounds (strip attrs, drop assocs, force state)
     "PS_CREATE_FEATURES": "0",  # 1 = create missing features/values in PS; 0 = reuse existing only
     "PS_MPN_FIELD": "mpn",  # product model field in the API (mpn = 1.7+; use reference for 1.6)
+    "PS_API_TIMEOUT": "90",  # HTTP timeout (s) for PrestaShop API calls; 0 = no timeout
+    "PS_API_RETRIES": "3",  # retries on connection errors / 5xx before failing a call
 }
 
 # ── DB-backed config (overrides .env) ──────────────────────────────────
@@ -58,6 +60,35 @@ def reload_db_config() -> None:
 def get_config(key: str, default: str = "") -> str:
     """Public getter — reads from DB cache, falls back to env/default."""
     return _get(key) or default
+
+
+def api_timeout() -> float | None:
+    """Seconds for PrestaShop API HTTP timeouts (0/empty = no timeout).
+
+    Reads the DB ``config`` table directly (bypassing the process cache) so a
+    change made from the Admin UI applies to a running daemon immediately.
+    """
+    raw = ""
+    try:
+        conn = sqlite3.connect(os.getenv("DB_PATH", "catalogo.db"))
+        try:
+            row = conn.execute(
+                "SELECT valor FROM config WHERE clave = 'PS_API_TIMEOUT'"
+            ).fetchone()
+            if row:
+                raw = row[0]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    if not raw:
+        raw = os.getenv("PS_API_TIMEOUT", DEFAULTS.get("PS_API_TIMEOUT", "90"))
+    raw = (raw or "90").strip()
+    try:
+        t = float(raw)
+    except ValueError:
+        return 90.0
+    return None if t <= 0 else t
 
 
 def set_config(key: str, value: str) -> None:

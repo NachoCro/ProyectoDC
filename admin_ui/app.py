@@ -2,23 +2,165 @@
 
 import json
 import logging
+import os
+import secrets
 import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
-from middleware.characteristics import merge_characteristics
+from middleware.characteristics import build_description_html, merge_characteristics
 from middleware.config import DAEMON_INTERVAL
 from middleware.db import get_connection, write_eav
 from middleware.descriptions import get_description
 from middleware.official_scraper import scrape_from_direct_url
+from middleware.spec_extractors import normalize_product, normalize_text
+from middleware.users import verify_user
 
 from .prestashop import AdminPrestashopClient, PrestashopError
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+
+def _load_secret_key() -> str:
+    """Clave de sesión: env SECRET_KEY → config DB → aleatoria persistida."""
+    from middleware.config import get_config, set_config
+
+    key = os.getenv("SECRET_KEY") or get_config("SECRET_KEY")
+    if key:
+        return key
+    key = secrets.token_hex(32)
+    try:
+        set_config("SECRET_KEY", key)
+    except Exception:
+        logger.warning("No se pudo persistir SECRET_KEY; las sesiones se invalidan al reiniciar")
+    return key
+
+
+app.secret_key = _load_secret_key()
+
+
+@app.after_request
+def _no_cache_api(resp):
+    """Desactivar cache del navegador en endpoints JSON (polling en vivo)."""
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+# ======================================================================
+# Autenticación (login + roles)
+# ======================================================================
+
+_PUBLIC_ENDPOINTS = {"login", "logout", "static"}
+
+
+@app.context_processor
+def _inject_current_user():
+    return {
+        "current_user": session.get("usuario"),
+        "current_role": session.get("rol"),
+    }
+
+
+@app.before_request
+def _require_login():
+    """Bloquear toda la UI salvo login/logout/static si no hay sesión.
+
+    Los endpoints /api/* responden 401 JSON (para el polling); el resto
+    redirige al login.
+    """
+    from middleware.users import count_users
+
+    if request.endpoint in _PUBLIC_ENDPOINTS:
+        return None
+
+    if session.get("usuario"):
+        if request.method == "POST" and session.get("rol") == "lectura":
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Permiso de solo lectura."}), 403
+            return "Tu usuario tiene permiso de solo lectura.", 403
+        return None
+
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "No autenticado."}), 401
+
+    # Sin usuarios todavía → primera configuración: crear el admin inicial
+    if count_users() == 0:
+        return redirect(url_for("setup"))
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    from middleware.users import count_users
+
+    if session.get("usuario"):
+        return redirect(url_for("dashboard"))
+
+    error = None
+    if request.method == "POST":
+        user = verify_user(request.form.get("usuario", ""), request.form.get("clave", ""))
+        if user:
+            session.clear()
+            session["usuario"] = user["usuario"]
+            session["rol"] = user["rol"]
+            next_url = request.form.get("next") or ""
+            if next_url.startswith("/") and not next_url.startswith("//"):
+                return redirect(next_url)
+            return redirect(url_for("dashboard"))
+        error = "Usuario o contraseña incorrectos."
+
+    return render_template(
+        "login.html",
+        error=error,
+        hay_usuarios=count_users() > 0,
+    )
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    """Primera configuración: crear el usuario admin inicial (solo sin usuarios)."""
+    from middleware.users import count_users, create_user
+
+    if count_users() > 0:
+        return redirect(url_for("login"))
+
+    error = None
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        clave = request.form.get("clave", "")
+        clave2 = request.form.get("clave2", "")
+        if not usuario or not clave:
+            error = "Completá usuario y contraseña."
+        elif clave != clave2:
+            error = "Las contraseñas no coinciden."
+        else:
+            ok, err = create_user(usuario, clave, "admin")
+            if ok:
+                session["usuario"] = usuario
+                session["rol"] = "admin"
+                return redirect(url_for("dashboard"))
+            error = err
+    return render_template("setup.html", error=error)
 
 
 # ======================================================================
@@ -41,13 +183,39 @@ def _audit(conn, id_producto: int, actor: str, accion: str, detalle: str | None 
 _LOCK_KEY = "pipeline_lock"
 
 
+def _lock_held(conn) -> bool:
+    """¿El lock está tomado por un proceso vivo?
+
+    El valor guarda el PID del proceso que tomó el lock. Si ese PID ya no
+    existe (el admin se cortó en medio de un pipeline), el lock es obsoleto
+    y se puede tomar. El valor legacy ``'1'`` se trata como tomado.
+    """
+    row = conn.execute(
+        "SELECT valor FROM config WHERE clave = ?", (_LOCK_KEY,)
+    ).fetchone()
+    if row is None:
+        return False
+    value = row["valor"]
+    if value == "1":
+        # Legacy: lo escribió el código viejo (sin PID). Como ese proceso
+        # ya no corre código nuevo, no se puede verificar → se asume
+        # obsoleto y se puede re-tomar.
+        return False
+    try:
+        pid = int(value)
+    except (TypeError, ValueError):
+        return True
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
 def _is_pipeline_running() -> bool:
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT valor FROM config WHERE clave = ?", (_LOCK_KEY,)
-        ).fetchone()
-        return row is not None and row["valor"] == "1"
+        return _lock_held(conn)
     finally:
         conn.close()
 
@@ -55,14 +223,11 @@ def _is_pipeline_running() -> bool:
 def _acquire_pipeline_lock() -> bool:
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT valor FROM config WHERE clave = ?", (_LOCK_KEY,)
-        ).fetchone()
-        if row and row["valor"] == "1":
+        if _lock_held(conn):
             return False
         conn.execute(
-            "INSERT OR REPLACE INTO config (clave, valor) VALUES (?, '1')",
-            (_LOCK_KEY,),
+            "INSERT OR REPLACE INTO config (clave, valor) VALUES (?, ?)",
+            (_LOCK_KEY, str(os.getpid())),
         )
         conn.commit()
         return True
@@ -90,7 +255,7 @@ def dashboard():
     try:
         pending = conn.execute(
             """SELECT COUNT(*) FROM productos
-               WHERE estado_actualizacion = 'desactualizado'
+               WHERE estado_actualizacion IN ('desactualizado', 'pendiente_revision')
                  AND product_not_found = 0"""
         ).fetchone()[0]
 
@@ -106,6 +271,10 @@ def dashboard():
             "SELECT COUNT(*) FROM productos WHERE active_verified = 1"
         ).fetchone()[0]
 
+        from middleware import plan
+        plan_today = plan.get_today_plan()
+        plan_label = plan.describe_plan(conn)
+
     finally:
         conn.close()
 
@@ -119,6 +288,8 @@ def dashboard():
         para_activar=para_activar,
         activos=activos,
         daemon=daemon,
+        plan_today=plan_today,
+        plan_label=plan_label,
     )
 
 
@@ -222,7 +393,7 @@ def diff(pid: int):
 
 @app.route("/products/<int:pid>/approve", methods=["POST"])
 def approve(pid: int):
-    actor = request.form.get("actor", "admin")
+    actor = request.form.get("actor", session.get("usuario") or "admin")
 
     conn = get_connection()
     try:
@@ -250,23 +421,39 @@ def approve(pid: int):
 
         subcat_name = product.get("subcat_name") or ""
 
+        # -- apply characteristics edited in the diff form ------------------
+        # The diff template posts char_name[]/char_value[] pairs; if the form
+        # was used, the user's edits override the proposal's characteristics.
+        edited_names = request.form.getlist("char_name[]")
+        edited_values = request.form.getlist("char_value[]")
+        if edited_names:
+            edited_chars = []
+            for name, value in zip(edited_names, edited_values):
+                name = (name or "").strip()
+                value = (value or "").strip()
+                if not name and not value:
+                    continue
+                if not name:
+                    name = "Característica"
+                edited_chars.append({"nombre": name, "valor": value})
+            proposal["caracteristicas"] = edited_chars
+
         # -- push to PrestaShop -------------------------------------------
         activate = request.form.get("activate", "0") == "1"
+
+        # Normalize entity-coded / mojibake text before it reaches PrestaShop.
+        proposal = normalize_product(proposal)
 
         # Build description from characteristics only:  *nombre*: valor
         chars = proposal.get("caracteristicas") or []
         merged_chars = merge_characteristics(chars, subcat_name)
-        desc = ""
-        if merged_chars:
-            lines = "".join(
-                f"<p><strong>{ch['nombre']}:</strong> {ch['valor']}</p>"
-                for ch in merged_chars if ch.get("nombre") and ch.get("valor")
-            )
-            desc = f'<div class="caracteristicas">{lines}</div>'
+        desc = build_description_html(merged_chars)
 
         updates: dict[str, Any] = {
             "description": desc,
-            "description_short": get_description(subcat_name)["descripcion_corta"],
+            "description_short": normalize_text(
+                get_description(subcat_name)["descripcion_corta"]
+            ),
         }
         if activate:
             updates["active"] = "1"
@@ -373,7 +560,7 @@ def approve(pid: int):
 
 @app.route("/products/<int:pid>/reject", methods=["POST"])
 def reject(pid: int):
-    actor = request.form.get("actor", "admin")
+    actor = request.form.get("actor", session.get("usuario") or "admin")
 
     conn = get_connection()
     try:
@@ -395,7 +582,7 @@ def reject(pid: int):
 
 @app.route("/products/<int:pid>/re-sync", methods=["POST"])
 def re_sync(pid: int):
-    actor = request.form.get("actor", "admin")
+    actor = request.form.get("actor", session.get("usuario") or "admin")
 
     conn = get_connection()
     try:
@@ -511,6 +698,78 @@ def run_pipeline():
     return jsonify({"ok": True, "redirect": url_for("dashboard")})
 
 
+@app.route("/run-once", methods=["POST"])
+def run_once():
+    """Ejecución única: corre el pipeline UNA vez con el objetivo indicado
+    (tipo + cantidad), sin modificar el plan configurado."""
+    from middleware import plan
+    from middleware.db import get_connection
+
+    sub = (request.form.get("run_sub", "") or "").strip()
+    try:
+        cant = int(request.form.get("run_cant", "") or 0)
+    except (TypeError, ValueError):
+        cant = 0
+    scope = (request.form.get("run_scope", "") or "inactive").strip() or "inactive"
+    if scope not in ("inactive", "active", "both"):
+        scope = "inactive"
+    dry_run = request.form.get("run_dry_run", "0") == "1"
+    skip_extract = request.form.get("run_skip_extract", "0") == "1"
+    modo = (request.form.get("run_modo", "") or "publicar").strip()
+    if modo not in ("publicar", "preparar"):
+        modo = "publicar"
+    override = {
+        "subcategoria": sub or None,
+        "cantidad": cant or None,
+        "scope": scope,
+        "modo": modo,
+    }
+    if not override["subcategoria"] and not override["cantidad"]:
+        return jsonify({"ok": False, "error": "Indicá tipo y/o cantidad"}), 400
+
+    conn = get_connection()
+    try:
+        objetivo = plan.describe_target(conn, override["subcategoria"], override["cantidad"])
+    finally:
+        conn.close()
+
+    if not _acquire_pipeline_lock():
+        return jsonify({"ok": False, "error": "El pipeline ya está ejecutándose"}), 409
+
+    from middleware import pipeline_state
+    from middleware.enrich import run as enrich_run
+    from middleware.extract import run as extract_run
+
+    scope_label = {"inactive": "inactivos", "active": "activos", "both": "activos+inactivos"}[scope]
+    extras = [f"productos {scope_label}"]
+    if modo == "preparar":
+        extras.append("solo preparar (no modificar PrestaShop)")
+    if dry_run:
+        extras.append("dry-run (sin escribir en PrestaShop)")
+    if skip_extract:
+        extras.append("solo enriquecer")
+
+    def _run():
+        try:
+            pipeline_state.add_log(
+                f"Ejecución única iniciada: {objetivo} — {', '.join(extras)}"
+            )
+            if not skip_extract:
+                extract_run(dry_run=dry_run, override=override)
+            enrich_run(dry_run=dry_run, override=override)
+            pipeline_state.add_log(f"Ejecución única finalizada: {objetivo}")
+        except Exception as exc:
+            logger.error("Run-once error: %s", exc)
+            pipeline_state.add_log(f"ERROR: {exc}")
+        finally:
+            pipeline_state.finish()
+            _release_pipeline_lock()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "objetivo": objetivo, "redirect": url_for("dashboard")})
+
+
 # ======================================================================
 # Audit log  (RF-14)
 # ======================================================================
@@ -563,24 +822,88 @@ def audit_clear():
 
 _SETTINGS_KEYS = [
     ("PRESTASHOP_API_URL", "PrestaShop API URL"),
-    ("PRESTASHOP_API_KEY", "PrestaShop API Key"),
+    ("PRESTASHOP_API_KEY", "PrestaShop API Key", True),
     ("BATCH_SIZE", "Batch Size"),
     ("API_SLEEP", "API Sleep (segundos)"),
     ("DAEMON_INTERVAL", "Daemon Interval (segundos)"),
     ("PS_COMPAT_81", "PrestaShop 8.1 compat (1=workarounds activos)"),
     ("PS_CREATE_FEATURES", "Crear características nuevas en PS (1=sí, 0=solo usar existentes)"),
     ("PS_MPN_FIELD", "Campo de modelo en la API (mpn=1.7+; reference para 1.6)"),
+    ("PS_API_TIMEOUT", "Timeout API PrestaShop (segundos; 0 = sin timeout)"),
+    ("PS_API_RETRIES", "Reintentos API PrestaShop (errores de conexión / 5xx)"),
 ]
 
 
 @app.route("/settings", methods=["GET"])
 def settings():
+    from middleware import plan
     from middleware.config import DEFAULTS, _get
     values = {}
-    for key, label in _SETTINGS_KEYS:
-        values[key] = {"label": label, "value": _get(key), "default": DEFAULTS.get(key, "")}
+    for entry in _SETTINGS_KEYS:
+        key, label = entry[0], entry[1]
+        values[key] = {
+            "label": label,
+            "value": _get(key),
+            "default": DEFAULTS.get(key, ""),
+            "password": len(entry) > 2 and entry[2],
+        }
+    conn = get_connection()
+    try:
+        subcategorias = plan.list_subcategorias(conn)
+        plan_label = plan.describe_plan(conn)
+    finally:
+        conn.close()
+
+    active = plan.get_active_plan()
+    weekly = plan.get_weekly()
+    plan_options = plan.get_options()
+    plan_week = []
+    for label, day in plan.WEEKDAYS:
+        entry = weekly.get(day, {})
+        plan_week.append({
+            "label": label,
+            "day": day,
+            "subcategoria": entry.get("subcategoria") or "",
+            "cantidad": entry.get("cantidad") or "",
+        })
+
     saved = request.args.get("saved")
-    return render_template("settings.html", fields=values, saved=saved)
+    return render_template(
+        "settings.html",
+        fields=values,
+        saved=saved,
+        subcategorias=subcategorias,
+        plan_active_sub=(active or {}).get("subcategoria") or "",
+        plan_active_cantidad=(active or {}).get("cantidad") or "",
+        plan_options=plan_options,
+        plan_week=plan_week,
+        today_plan=plan.get_today_plan(),
+        plan_label=plan_label,
+    )
+
+
+@app.route("/plan/save", methods=["POST"])
+def plan_save():
+    """Guardar plan activo + agenda semanal + opciones avanzadas."""
+    from middleware import plan
+    plan.set_active(
+        request.form.get("plan_subcategoria", ""),
+        request.form.get("plan_cantidad", ""),
+    )
+    plan.set_options(
+        scope=request.form.get("plan_scope", ""),
+        modo=request.form.get("plan_modo", ""),
+        skip_extract=request.form.get("plan_skip_extract", "0") == "1",
+        dry_run=request.form.get("plan_dry_run", "0") == "1",
+    )
+    weekly = {}
+    for _, day in plan.WEEKDAYS:
+        sub = (request.form.get(f"week_sub_{day}", "") or "").strip()
+        cant = (request.form.get(f"week_cant_{day}", "") or "").strip()
+        if sub or cant:
+            weekly[str(day)] = {"subcategoria": sub, "cantidad": cant}
+    plan.set_weekly(weekly)
+    return redirect(url_for("settings", saved=1))
 
 
 @app.route("/settings", methods=["POST"])
@@ -621,29 +944,116 @@ def _save_brands(data: dict) -> None:
         f.write("\n")
 
 
+_GENERIC_RESULT_SELECTOR = (
+    "a[href*='product'], a[href*='/p/'], a[href*='MLA-'], a[href*='model'], "
+    ".product-card a, a[class*='product'], .s-result-item h2 a"
+)
+
+
+def _brand_slug(name: str) -> str:
+    import re as _re
+    return _re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+
+
+def _detect_search_type(entry: dict) -> str:
+    """Deducir el método de búsqueda simple desde una entrada guardada."""
+    if entry.get("strategy") == "sitemap":
+        return "sitemap"
+    if entry.get("strategy") == "pdf_sitemap":
+        return "pdf_sitemap"
+    url = (entry.get("search_url") or "").lower()
+    if "mercadolibre" in url:
+        return "mercadolibre"
+    if "google.com" in url and "/search" in url:
+        return "google"
+    return "site"
+
+
+def _build_brand_entry(form) -> dict:
+    """Construir la entrada de brands_mapping.json desde el formulario simple.
+
+    El usuario final solo completa: nombre, método de búsqueda y sitio web.
+    Los campos avanzados (URL exacta, selector CSS, sitemap) sobreescriben a
+    los generados automáticamente.
+    """
+    name = (form.get("name", "") or "").strip().lower()
+    search_type = (form.get("search_type", "site") or "site").strip().lower()
+    site_url = (form.get("site_url", "") or "").strip().lower().replace("https://", "").replace("http://", "")
+    search_url = (form.get("search_url", "") or "").strip()
+    result_selector = (form.get("result_selector", "") or "").strip()
+    sitemap_url = (form.get("sitemap_url", "") or "").strip()
+    url_pattern = (form.get("url_pattern", "") or "").strip()
+    direct_url_pattern = (form.get("direct_url_pattern", "") or "").strip()
+    has_pdf = form.get("has_pdf") == "1"
+
+    entry: dict[str, Any] = {}
+
+    if search_type == "sitemap":
+        entry["strategy"] = "sitemap"
+        if sitemap_url:
+            entry["sitemap_url"] = sitemap_url
+        if url_pattern:
+            entry["url_pattern"] = url_pattern
+    elif search_type == "pdf_sitemap":
+        entry["strategy"] = "pdf_sitemap"
+        if sitemap_url:
+            entry["sitemap_url"] = sitemap_url
+    else:
+        if not search_url:
+            slug = _brand_slug(name)
+            if search_type == "mercadolibre":
+                search_url = f"https://listado.mercadolibre.com.ar/{slug}-{{mpn}}"
+            elif search_type == "google":
+                search_url = f"https://www.google.com/search?q={slug}+{{mpn}}"
+            else:  # site
+                site = site_url or (f"www.{name}.com" if name else "")
+                if site:
+                    search_url = f"https://{site}/search?q={{mpn}}"
+        if search_url:
+            entry["search_url"] = search_url
+        if result_selector:
+            entry["result_selector"] = result_selector
+
+    if direct_url_pattern:
+        entry["direct_url_pattern"] = direct_url_pattern
+    if has_pdf:
+        entry["has_pdf"] = True
+    return entry
+
+
 @app.route("/brands")
 def brands():
     data = _load_brands()
     sorted_brands = sorted(data.items(), key=lambda x: x[0].lower())
+    enriched = []
+    for name, info in sorted_brands:
+        row = dict(info)
+        row["search_type"] = _detect_search_type(row)
+        row["site_url"] = ""
+        row["search_url"] = row.get("search_url", "")
+        row["result_selector"] = row.get("result_selector", "")
+        row["sitemap_url"] = row.get("sitemap_url", "")
+        row["url_pattern"] = row.get("url_pattern", "")
+        row["direct_url_pattern"] = row.get("direct_url_pattern", "")
+        enriched.append((name, row))
     saved = request.args.get("saved")
     deleted = request.args.get("deleted")
-    return render_template("brands.html", brands=sorted_brands, saved=saved, deleted=deleted)
+    return render_template(
+        "brands.html", brands=enriched, saved=saved, deleted=deleted,
+        generic_selector=_GENERIC_RESULT_SELECTOR,
+    )
 
 
 @app.route("/brands/add", methods=["POST"])
 def brands_add():
-    name = request.form.get("name", "").strip().lower()
-    search_url = request.form.get("search_url", "").strip()
-    result_selector = request.form.get("result_selector", "").strip()
-    has_pdf = request.form.get("has_pdf") == "1"
-    if not name or not search_url:
+    name = (request.form.get("name", "") or "").strip().lower()
+    if not name:
+        return redirect(url_for("brands"))
+    entry = _build_brand_entry(request.form)
+    if not entry:
         return redirect(url_for("brands"))
     data = _load_brands()
-    data[name] = {
-        "search_url": search_url,
-        "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
-        "has_pdf": has_pdf,
-    }
+    data[name] = entry
     _save_brands(data)
     return redirect(url_for("brands", saved=name))
 
@@ -660,20 +1070,14 @@ def brands_delete():
 
 @app.route("/brands/edit", methods=["POST"])
 def brands_edit():
-    name = request.form.get("name", "").strip().lower()
-    search_url = request.form.get("search_url", "").strip()
-    result_selector = request.form.get("result_selector", "").strip()
-    has_pdf = request.form.get("has_pdf") == "1"
-    if not name or not search_url:
-        return redirect(url_for("brands"))
+    name = (request.form.get("name", "") or "").strip().lower()
     data = _load_brands()
-    if name not in data:
+    if not name or name not in data:
         return redirect(url_for("brands"))
-    data[name] = {
-        "search_url": search_url,
-        "result_selector": result_selector or "a[href*='product'], .product-card a, a[class*='product']",
-        "has_pdf": has_pdf,
-    }
+    entry = _build_brand_entry(request.form)
+    if not entry:
+        return redirect(url_for("brands"))
+    data[name] = entry
     _save_brands(data)
     return redirect(url_for("brands", saved=name))
 
@@ -742,19 +1146,22 @@ def start_daemon():
     interval = request.form.get("interval", type=int) or DAEMON_INTERVAL
     dry_run = request.form.get("dry_run", "0") == "1"
     check_inactive = request.form.get("check_inactive", "0") == "1"
+    no_initial_pipeline = request.form.get("no_initial_pipeline", "0") == "1"
 
     cmd = [sys.executable, "daemon.py", "--interval", str(interval)]
     if check_inactive:
         cmd.append("--check-inactive")
     if dry_run:
         cmd.append("--dry-run")
+    if no_initial_pipeline:
+        cmd.append("--no-initial-pipeline")
     if request.form.get("verbose", "0") == "1":
         cmd.append("-v")
 
     try:
         popen_kwargs: dict[str, Any] = {
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
+            "stdout": None,
+            "stderr": None,
             "cwd": os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         }
         if os.name == "posix":

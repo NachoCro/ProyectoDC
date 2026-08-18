@@ -14,19 +14,43 @@
 {# ---- Add form ---- #}
 <div class="brands-add">
   <h2>Agregar marca</h2>
+  <p class="brands-hint">
+    Solo necesitás el nombre y cómo buscar los productos. El resto se completa
+    solo.
+  </p>
   <form method="post" action="{{ url_for('brands_add') }}" class="brands-form">
     <div class="brands-form__row">
-      <input type="text" name="name" placeholder="Nombre (ej: samsung)" required>
-      <input type="text" name="search_url" placeholder="URL de búsqueda (con {mpn})" required>
-    </div>
-    <div class="brands-form__row">
-      <input type="text" name="result_selector" placeholder="Selector CSS (opcional)">
+      <input type="text" name="name" placeholder="Nombre de la marca (ej: samsung)" required>
+      <select name="search_type">
+        <option value="site">Buscador del sitio</option>
+        <option value="mercadolibre">MercadoLibre</option>
+        <option value="google">Google</option>
+        <option value="sitemap">Sitemap del sitio</option>
+        <option value="pdf_sitemap">Fichas en PDF (sitemap)</option>
+      </select>
       <label class="brand-pdf-toggle">
         <input type="checkbox" name="has_pdf" value="1">
-        <span>Publica specs en PDF</span>
+        <span>Specs en PDF</span>
       </label>
+    </div>
+    <div class="brands-form__row">
+      <input type="text" name="site_url" placeholder="Sitio web (ej: hp.com)">
       <button type="submit" class="btn btn--approve btn--lg">Agregar</button>
     </div>
+    <details class="brands-advanced">
+      <summary>Opciones avanzadas (URL exacta, selector CSS)</summary>
+      <div class="brands-form__row">
+        <input type="text" name="search_url" placeholder="URL de búsqueda con {mpn} (opcional)">
+        <input type="text" name="result_selector" placeholder="Selector CSS (opcional)">
+      </div>
+      <div class="brands-form__row">
+        <input type="text" name="sitemap_url" placeholder="URL del sitemap (solo sitemap / PDF)">
+        <input type="text" name="url_pattern" placeholder="Patrón de URL (solo sitemap)">
+      </div>
+      <div class="brands-form__row">
+        <input type="text" name="direct_url_pattern" placeholder="URL directa con {model_slug} (opcional)">
+      </div>
+    </details>
   </form>
 </div>
 
@@ -40,19 +64,54 @@
   <form method="post" action="{{ url_for('brands_edit') }}" class="brand-row" data-name="{{ name }}">
     <input type="hidden" name="name" value="{{ name }}">
     <span class="brand-row__name">{{ name }}</span>
-    <input type="text" name="search_url" value="{{ info.search_url }}" class="brand-row__input" required>
-    <input type="text" name="result_selector" value="{{ info.result_selector }}" class="brand-row__input">
+    <select name="search_type" class="brand-row__select">
+      <option value="site" {{ 'selected' if info.search_type == 'site' }}>Buscador del sitio</option>
+      <option value="mercadolibre" {{ 'selected' if info.search_type == 'mercadolibre' }}>MercadoLibre</option>
+      <option value="google" {{ 'selected' if info.search_type == 'google' }}>Google</option>
+      <option value="sitemap" {{ 'selected' if info.search_type == 'sitemap' }}>Sitemap del sitio</option>
+      <option value="pdf_sitemap" {{ 'selected' if info.search_type == 'pdf_sitemap' }}>Fichas en PDF</option>
+    </select>
+    <input type="text" name="site_url" value="{{ info.site_url }}" class="brand-row__input brand-row__site" placeholder="Sitio web">
     <label class="brand-pdf-toggle" title="Publica especificaciones en PDF">
       <input type="checkbox" name="has_pdf" value="1" {{ 'checked' if info.get('has_pdf') }}>
       <span>PDF</span>
     </label>
     <button type="submit" class="btn btn--sync btn--sm">Guardar</button>
     <button type="button" class="btn btn--reject btn--sm" onclick="if(confirm('Eliminar marca &quot;{{ name }}&quot;?'))this.form.action='{{ url_for('brands_delete') }}';this.form.submit();">Eliminar</button>
+    <details class="brands-advanced">
+      <summary>Avanzado</summary>
+      <div class="brands-form__row">
+        <input type="text" name="search_url" value="{{ info.search_url }}" placeholder="URL de búsqueda con {mpn}">
+        <input type="text" name="result_selector" value="{{ info.result_selector }}" placeholder="Selector CSS">
+      </div>
+      <div class="brands-form__row">
+        <input type="text" name="sitemap_url" value="{{ info.sitemap_url }}" placeholder="URL del sitemap">
+        <input type="text" name="url_pattern" value="{{ info.url_pattern }}" placeholder="Patrón de URL">
+      </div>
+      <div class="brands-form__row">
+        <input type="text" name="direct_url_pattern" value="{{ info.direct_url_pattern }}" placeholder="URL directa con {model_slug}">
+      </div>
+    </details>
   </form>
   {% endfor %}
 </div>
 
 <style>
+.brands-hint { color: #64748b; font-size: 0.88em; margin: 0.2rem 0 0.8rem; }
+.brands-advanced {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+.brands-advanced summary {
+  cursor: pointer;
+  font-size: 0.82em;
+  color: #64748b;
+  user-select: none;
+}
+.brands-advanced .brands-form__row { margin-top: 0.4rem; }
 .brand-pdf-toggle {
   display: inline-flex;
   align-items: center;
@@ -63,6 +122,7 @@
   font-size: 0.85em;
   background: #f0f0f0;
   transition: background 0.2s;
+  white-space: nowrap;
 }
 .brand-pdf-toggle:has(input:checked) {
   background: #d4edda;
@@ -73,14 +133,21 @@
   height: 14px;
   cursor: pointer;
 }
-[data-theme="dark"] .brand-pdf-toggle {
-  background: #2d3748;
-  color: #e2e8f0;
+.brand-row__select {
+  padding: 0.35rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 0.85rem;
+  max-width: 170px;
 }
-[data-theme="dark"] .brand-pdf-toggle:has(input:checked) {
-  background: #1e4d2b;
-  color: #68d391;
-}
+.brand-row__site { flex: 1; min-width: 140px; }
+[data-theme="dark"] .brands-hint { color: #94a3b8; }
+[data-theme="dark"] .brands-advanced { background: #1e293b; border-color: #334155; }
+[data-theme="dark"] .brands-advanced summary { color: #94a3b8; }
+[data-theme="dark"] .brand-pdf-toggle { background: #2d3748; color: #e2e8f0; }
+[data-theme="dark"] .brand-pdf-toggle:has(input:checked) { background: #1e4d2b; color: #68d391; }
+[data-theme="dark"] .brand-row__select { background: #1e293b; border-color: #334155; color: #e2e8f0; }
 </style>
 
 <script>

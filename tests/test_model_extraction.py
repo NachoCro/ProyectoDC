@@ -82,3 +82,18 @@ def test_infer_brand_none():
 def test_infer_brand_word_boundary_no_false_match():
     # "blu" should not match "Bluetooth" / "Blu-ray"
     assert _infer_brand_from_name("Parlante Bluetooth") is None
+
+
+def test_infer_brand_echo_only_for_amazon_device():
+    # "ECHO 4605" is Echo-brand garden equipment, not an Amazon Echo speaker.
+    assert _infer_brand_from_name("CILINDRO COMPLETO ECHO 4605") is None
+    assert _infer_brand_from_name("FILTRO AIRE ECHO4605") is None
+    assert _infer_brand_from_name("Echo Dot 5ta gen") == "amazon"
+    assert _infer_brand_from_name("Amazon Echo Show 8") == "amazon"
+
+
+def test_infer_brand_hp_not_horsepower():
+    # "9 - 13 HP" is horsepower, not the HP brand.
+    assert _infer_brand_from_name("AGUJA MOTOR 9 - 13 HP") is None
+    assert _infer_brand_from_name("AGUJA MOTOR 5.5 - 6.5 HP") is None
+    assert _infer_brand_from_name("Notebook HP 250 G8") == "hp"

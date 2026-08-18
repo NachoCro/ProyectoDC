@@ -5,6 +5,18 @@ import logging
 from admin_ui.app import app
 
 
+class _SilencePollingEndpoints(logging.Filter):
+    """Drop all werkzeug access logs — the console should only show daemon
+    enrichment progress (which product is being enriched), not HTTP request
+    noise. Access lines always look like ``addr - - [date] "METHOD ...``.
+    Startup/server messages and errors are still shown."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name == "werkzeug":
+            return " - - [" not in record.getMessage()
+        return True
+
+
 def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -12,6 +24,7 @@ def _setup_logging(verbose: bool) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.getLogger("werkzeug").addFilter(_SilencePollingEndpoints())
 
 
 def main() -> None:

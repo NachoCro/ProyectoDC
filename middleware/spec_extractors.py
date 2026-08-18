@@ -5,6 +5,7 @@ Shared extraction strategies used by both ``official_scraper`` and
 per-brand configuration.
 """
 
+import html as _html
 import json
 import logging
 import re
@@ -13,6 +14,115 @@ from typing import cast
 from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
+
+
+def decode_response(resp) -> str:
+    """Decode an HTTP response body to text honoring the *real* charset.
+
+    ``requests`` falls back to ISO-8859-1 when the ``Content-Type`` header
+    omits a charset (or declares latin-1 while the body is actually UTF-8),
+    producing mojibake (``á`` → ``Ã¡``, ``ñ`` → ``Ã±``).  Charset resolution:
+
+    1. HTML ``<meta charset=...>`` tag (skipping latin/ascii);
+    2. ``Content-Type`` header charset — a latin-1 header usually *lies*
+       (the body is UTF-8), so try strict UTF-8 first and only fall back to
+       the declared charset if the bytes are not valid UTF-8;
+    3. latin-1 declared by ``<meta>``;
+    4. ``apparent_encoding`` (chardet heuristic);
+    5. UTF-8 as last resort.
+    """
+    content = resp.content
+    if not content:
+        return ""
+
+    _LATIN = ("iso-8859-1", "latin-1", "latin1", "ascii")
+    header_enc = (getattr(resp, "encoding", None) or "").strip() or None
+
+    head = content[:4096].decode("ascii", errors="ignore")
+    meta = re.search(r'<meta[^>]+charset=["\']?\s*([a-zA-Z0-9_-]+)', head, re.I)
+
+    if meta:
+        enc = meta.group(1).strip()
+        if enc.lower() not in _LATIN:
+            try:
+                return content.decode(enc, errors="replace")
+            except LookupError:
+                pass
+
+    if header_enc:
+        if header_enc.lower() in _LATIN:
+            try:
+                return content.decode("utf-8")
+            except UnicodeDecodeError:
+                return content.decode(header_enc, errors="replace")
+        try:
+            return content.decode(header_enc, errors="replace")
+        except LookupError:
+            pass
+
+    if meta:
+        try:
+            return content.decode(meta.group(1).strip(), errors="replace")
+        except LookupError:
+            pass
+
+    enc = getattr(resp, "apparent_encoding", None)
+    if enc and enc.lower() not in _LATIN:
+        try:
+            return content.decode(enc, errors="replace")
+        except (LookupError, UnicodeDecodeError):
+            pass
+
+    return content.decode("utf-8", errors="replace")
+
+
+def normalize_text(value: str) -> str:
+    """Fix font/encoding corruption that arrives from third-party sources.
+
+    Two kinds of corruption are common in scraped content:
+
+    1. **Literal HTML entities** — ``&#225;``, ``&quot;``, ``&amp;nbsp;``
+       (double-escaped) appear as visible "codes" instead of ``á``, ``"``, `` ``.
+       Decoded with ``html.unescape`` up to 3 passes (``&amp;nbsp;`` → ``&nbsp;``
+       → non-breaking space), stopping as soon as the string is stable.
+    2. **Mojibake** — UTF-8 bytes decoded as latin-1 (``Ã³``, ``Ã±``, ``Ã\\xad``)
+       show up where accented letters should be.  Recovered by re-encoding the
+       whole string as latin-1 and decoding as UTF-8.  Clean text is untouched:
+       a real accent like ``é`` encodes to latin-1 byte ``0xE9`` which is not
+       valid UTF-8, so the re-decode fails and the original is kept.
+    """
+    if not value:
+        return value
+    for _ in range(3):
+        unescaped = _html.unescape(value)
+        if unescaped == value:
+            break
+        value = unescaped
+    try:
+        fixed = value.encode("latin-1").decode("utf-8")
+        return fixed
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
+def normalize_product(data) -> dict | None:
+    """Recursively apply :func:`normalize_text` to every string in *data*.
+
+    Normalizes product dicts (title/descripcion/caracteristicas/marca/...) so
+    no entity-coded or mojibake text is stored or pushed to PrestaShop.
+    """
+    if not isinstance(data, dict):
+        return data
+    for key, val in list(data.items()):
+        if isinstance(val, str):
+            data[key] = normalize_text(val)
+        elif isinstance(val, list):
+            data[key] = [
+                normalize_product(item) if isinstance(item, dict)
+                else normalize_text(item) if isinstance(item, str) else item
+                for item in val
+            ]
+    return data
 
 
 def is_template_placeholder(text: str) -> bool:

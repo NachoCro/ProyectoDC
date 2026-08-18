@@ -14,16 +14,24 @@
 </head>
 <body>
   <nav class="nav">
-    <a class="nav__brand" href="{{ url_for('dashboard') }}">⚡ Sync Admin</a>
+    <a class="nav__brand" href="{{ url_for('dashboard') }}">Panel de la tienda</a>
     <div class="nav__links">
-      <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+      <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>Inicio</a>
       <a href="{{ url_for('products') }}" {% if request.endpoint == 'products' %}class="active"{% endif %}>Productos</a>
+      {% if current_role != 'lectura' %}
       <a href="{{ url_for('brands') }}" {% if request.endpoint == 'brands' %}class="active"{% endif %}>Marcas</a>
-      <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}class="active"{% endif %}>Auditoría</a>
+      {% endif %}
+      <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}class="active"{% endif %}>Historial</a>
+      {% if current_role != 'lectura' %}
       <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>Configuración</a>
+      {% endif %}
     </div>
-    <button class="nav__toggle" id="themeToggle" title="Cambiar tema">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <span class="nav__user" title="Rol: {{ current_role }}">{{ current_user }}</span>
+    <form method="post" action="{{ url_for('logout') }}" class="nav__logout">
+      <button class="btn btn--sm btn--primary" type="submit">Salir</button>
+    </form>
+    <button class="nav__toggle" id="themeToggle" title="Tema claro u oscuro" aria-label="Cambiar entre tema claro y oscuro">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5"/>
         <line x1="12" y1="1" x2="12" y2="3"/>
         <line x1="12" y1="21" x2="12" y2="23"/>
@@ -44,7 +52,7 @@
   <nav class="nav-bottom" aria-label="Navegación móvil">
     <a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}class="active"{% endif %}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      <span>Dashboard</span>
+      <span>Inicio</span>
     </a>
     <a href="{{ url_for('products') }}" {% if request.endpoint == 'products' %}class="active"{% endif %}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
@@ -56,7 +64,7 @@
     </a>
     <a href="{{ url_for('audit') }}" {% if request.endpoint == 'audit' %}class="active"{% endif %}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-      <span>Auditoría</span>
+      <span>Historial</span>
     </a>
     <a href="{{ url_for('settings') }}" {% if request.endpoint == 'settings' %}class="active"{% endif %}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>

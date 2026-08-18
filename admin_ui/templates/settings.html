@@ -9,13 +9,261 @@
 {% endif %}
 
 <form method="post" action="{{ url_for('settings_save') }}" class="settings-form">
+  <h2>Conexión y pipeline</h2>
   {% for key, f in fields.items() %}
   <div class="settings-field">
     <label for="{{ key }}">{{ f.label }}</label>
-    <input type="text" id="{{ key }}" name="{{ key }}" value="{{ f.value }}" placeholder="{{ f.default }}">
+    <input type="{% if f.password %}password{% else %}text{% endif %}" id="{{ key }}" name="{{ key }}" value="{{ f.value }}" placeholder="{{ f.default }}">
   </div>
   {% endfor %}
   <button type="submit" class="btn btn--lg btn--approve">Guardar</button>
 </form>
+
+<form method="post" action="{{ url_for('plan_save') }}" class="settings-form plan-form" id="plan">
+  <h2>Plan de trabajo</h2>
+  <p class="settings-hint">
+    Escribí qué tipo de producto querés procesar y cuántos por ciclo. Los
+    productos se eligen por <strong>similitud del nombre</strong> con el texto
+    (ej: "motosierras" alcanza a "Motosierra a gasolina", sin exigir que
+    coincida una subcategoría exacta). Podés dejar el tipo en blanco y solo
+    limitar la cantidad. La agenda semanal sobreescribe el plan según el día.
+  </p>
+
+  <div class="settings-field">
+    <label for="plan_subcategoria">Tipo de producto (plan activo)</label>
+    <input list="subcat-list" id="plan_subcategoria" name="plan_subcategoria"
+           value="{{ plan_active_sub }}" placeholder="Todas las categorías, ej: motosierras">
+    <datalist id="subcat-list">
+      {% for s in subcategorias %}
+      <option value="{{ s }}"></option>
+      {% endfor %}
+    </datalist>
+  </div>
+  <div class="settings-field">
+    <label for="plan_cantidad">Cantidad de productos a enriquecer por ciclo</label>
+    <input type="number" id="plan_cantidad" name="plan_cantidad" value="{{ plan_active_cantidad or '' }}" min="1" placeholder="10">
+  </div>
+
+  <h3 class="plan-week-title">Agenda semanal (opcional)</h3>
+  <table class="plan-week">
+    <thead>
+      <tr><th>Día</th><th>Tipo de producto</th><th>Cantidad</th></tr>
+    </thead>
+    <tbody>
+      {% for d in plan_week %}
+      <tr>
+        <td>{{ d.label }}</td>
+        <td>
+          <input list="subcat-list" name="week_sub_{{ d.day }}" value="{{ d.subcategoria }}" placeholder="—">
+        </td>
+        <td>
+          <input type="number" name="week_cant_{{ d.day }}" value="{{ d.cantidad or '' }}" min="1" placeholder="—">
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <details class="runonce-advanced">
+    <summary>Opciones avanzadas del plan</summary>
+    <p class="settings-hint">
+      Aplican al plan efectivo de hoy (venga del plan activo o de la agenda
+      semanal) y a la fase inicial del daemon. En "solo preparar" el pipeline
+      guarda la propuesta sin tocar PrestaShop: el producto queda
+      <strong>pendiente de revisión</strong> y publicás después desde su página
+      con el botón Aceptar.
+    </p>
+    <div class="settings-field">
+      <label for="plan_scope">Procesar productos</label>
+      <select id="plan_scope" name="plan_scope">
+        <option value="inactive" {% if plan_options.scope in ('', 'inactive') %}selected{% endif %}>Inactivos (con stock)</option>
+        <option value="active" {% if plan_options.scope == 'active' %}selected{% endif %}>Activos</option>
+        <option value="both" {% if plan_options.scope == 'both' %}selected{% endif %}>Activos + Inactivos</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label for="plan_modo">¿Modificar el producto?</label>
+      <select id="plan_modo" name="plan_modo">
+        <option value="publicar" {% if plan_options.modo in ('', 'publicar') %}selected{% endif %}>Modificar en PrestaShop (publicar)</option>
+        <option value="preparar" {% if plan_options.modo == 'preparar' %}selected{% endif %}>Solo preparar (guardar propuesta, no modificar)</option>
+      </select>
+    </div>
+    <label class="runonce-check">
+      <input type="checkbox" name="plan_skip_extract" value="1" {% if plan_options.skip_extract %}checked{% endif %}>
+      Solo enriquecer (saltar la extracción)
+    </label>
+    <label class="runonce-check">
+      <input type="checkbox" name="plan_dry_run" value="1" {% if plan_options.dry_run %}checked{% endif %}>
+      Simulación (no escribir en PrestaShop)
+    </label>
+  </details>
+
+  <p class="settings-hint plan-today">
+    Hoy aplica: <strong>{{ plan_label }}</strong>
+  </p>
+
+  <button type="submit" class="btn btn--lg btn--approve">Guardar plan</button>
+</form>
+
+<form method="post" action="{{ url_for('run_once') }}" class="settings-form runonce-form" id="run-once">
+  <h2>Ejecución única</h2>
+  <p class="settings-hint">
+    Corré el pipeline <strong>una sola vez</strong> con este tipo y cantidad,
+    sin tocar el plan de arriba. Ideal para una tanda puntual (ej: "procesá
+    ahora 50 motosierras").
+  </p>
+  <div class="settings-field">
+    <label for="run_sub">Tipo de producto</label>
+    <input list="subcat-list" id="run_sub" name="run_sub" placeholder="Tipo de producto, ej: motosierras">
+  </div>
+  <div class="settings-field">
+    <label for="run_cant">Cantidad</label>
+    <input type="number" id="run_cant" name="run_cant" min="1" placeholder="10">
+  </div>
+
+  <details class="runonce-advanced">
+    <summary>Opciones avanzadas</summary>
+    <div class="settings-field">
+      <label for="run_scope">Procesar productos</label>
+      <select id="run_scope" name="run_scope">
+        <option value="inactive">Inactivos (con stock)</option>
+        <option value="active">Activos</option>
+        <option value="both">Activos + Inactivos</option>
+      </select>
+    </div>
+    <label class="runonce-check">
+      <input type="checkbox" name="run_skip_extract" value="1">
+      Solo enriquecer (saltar la extracción)
+    </label>
+    <div class="settings-field">
+      <label for="run_modo">¿Modificar el producto?</label>
+      <select id="run_modo" name="run_modo">
+        <option value="publicar">Modificar en PrestaShop (publicar)</option>
+        <option value="preparar">Solo preparar (guardar propuesta, no modificar)</option>
+      </select>
+      <p class="settings-hint" style="margin-top:0.4rem;">
+        En "solo preparar" el pipeline enriquece y guarda la propuesta sin tocar
+        PrestaShop: el producto queda <strong>pendiente de revisión</strong> y
+        publicás después desde su página con el botón Aceptar.
+      </p>
+    </div>
+    <label class="runonce-check">
+      <input type="checkbox" name="run_dry_run" value="1">
+      Simulación (no escribir en PrestaShop)
+    </label>
+  </details>
+
+  <button type="submit" class="btn btn--lg btn--sync">Ejecutar ahora</button>
+  <span class="runonce-status" id="runOnceStatus"></span>
+</form>
+
+<style>
+.plan-form { margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; }
+.plan-form h2 { margin-bottom: 0.4rem; }
+.settings-hint { color: #64748b; font-size: 0.88em; margin: 0.2rem 0 1rem; }
+.plan-form select, .plan-form input[list] {
+  width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #cbd5e1;
+  border-radius: 6px; background: #fff; font-size: 0.95rem;
+}
+.plan-week { width: 100%; border-collapse: collapse; margin: 0.5rem 0 0.75rem; }
+.plan-week th, .plan-week td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.plan-week td:first-child { font-weight: 600; width: 110px; }
+.plan-week select, .plan-week input { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 5px; }
+.plan-today { margin-top: 0.75rem; }
+[data-theme="dark"] .plan-form { border-top-color: #2d3748; }
+[data-theme="dark"] .settings-hint { color: #94a3b8; }
+[data-theme="dark"] .plan-form select,
+[data-theme="dark"] .plan-form input[list],
+[data-theme="dark"] .plan-week select,
+[data-theme="dark"] .plan-week input { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+[data-theme="dark"] .plan-week th, [data-theme="dark"] .plan-week td { border-bottom-color: #2d3748; }
+<style>
+.runonce-form { margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; }
+.runonce-form .settings-field input[list] {
+  width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #cbd5e1;
+  border-radius: 6px; background: #fff; font-size: 0.95rem;
+}
+.runonce-status { margin-left: 0.6rem; font-size: 0.88em; color: #64748b; }
+.runonce-status.runonce-status--ok { color: #155724; }
+.runonce-status.runonce-status--err { color: #b02a37; }
+[data-theme="dark"] .runonce-form { border-top-color: #2d3748; }
+[data-theme="dark"] .runonce-form .settings-field input[list] { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+[data-theme="dark"] .runonce-status { color: #94a3b8; }
+[data-theme="dark"] .runonce-status.runonce-status--ok { color: #68d391; }
+[data-theme="dark"] .runonce-status.runonce-status--err { color: #f6ad55; }
+.runonce-advanced {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.runonce-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #334155;
+  user-select: none;
+}
+.runonce-advanced .settings-field { margin: 0.6rem 0 0; }
+.runonce-advanced select {
+  width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #cbd5e1;
+  border-radius: 6px; background: #fff; font-size: 0.95rem;
+}
+.runonce-check {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-top: 0.55rem; font-size: 0.9rem; color: #334155; cursor: pointer;
+}
+[data-theme="dark"] .runonce-advanced { border-color: #334155; background: #1e293b; }
+[data-theme="dark"] .runonce-advanced summary { color: #e2e8f0; }
+[data-theme="dark"] .runonce-advanced select { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+[data-theme="dark"] .runonce-check { color: #e2e8f0; }
+</style>
+
+<script>
+(function() {
+  var form = document.getElementById('run-once');
+  var status = document.getElementById('runOnceStatus');
+  if (!form || !status) return;
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var sub = form.run_sub.value.trim();
+    var cant = form.run_cant.value.trim();
+    if (!sub && !cant) {
+      status.textContent = 'Indicá tipo y/o cantidad';
+      status.className = 'runonce-status runonce-status--err';
+      return;
+    }
+    var btn = form.querySelector('button[type="submit"]');
+    var prev = btn.textContent;
+    btn.disabled = true;
+    status.textContent = 'Ejecutando...';
+    status.className = 'runonce-status';
+    fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form)
+    }).then(function(r) { return r.json().then(function(j) { return {ok: r.ok, json: j}; }); })
+      .then(function(res) {
+        btn.disabled = false;
+        btn.textContent = prev;
+        if (res.ok) {
+          status.textContent = 'Ejecutando: ' + res.json.objetivo + ' — mirá el dashboard';
+          status.className = 'runonce-status runonce-status--ok';
+          form.run_sub.value = '';
+          form.run_cant.value = '';
+        } else {
+          status.textContent = res.json.error || 'Error al ejecutar';
+          status.className = 'runonce-status runonce-status--err';
+        }
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = prev;
+        status.textContent = 'Error de conexión';
+        status.className = 'runonce-status runonce-status--err';
+      });
+  });
+})();
+</script>
 
 {% endblock %}

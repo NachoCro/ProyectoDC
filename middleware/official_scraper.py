@@ -259,7 +259,7 @@ def _fetch_page(page_url: str) -> tuple["BeautifulSoup | None", list[dict[str, s
         resp = _SESSION.get(page_url, timeout=30)
         resp.raise_for_status()
         from .pdf_scraper import find_spec_pdf_links
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = BeautifulSoup(spec_extractors.decode_response(resp), "lxml")
         links = find_spec_pdf_links(soup, page_url)
         logger.info("  PDF_SITEMAP  %s → %d spec PDF links", page_url, len(links))
     except Exception as exc:
@@ -612,7 +612,6 @@ _PRODUCT_LINE_TO_BRAND: dict[str, str] = {
     "tuf": "asus",
     "matebook": "huawei",
     "nova": "huawei",
-    "echo": "amazon",
     "kindle": "amazon",
     "fire tv": "amazon",
     "dcp-": "brother",
@@ -622,6 +621,19 @@ _PRODUCT_LINE_TO_BRAND: dict[str, str] = {
     "hl-": "brother",
     "hl": "brother",
 }
+
+
+# "echo" is ambiguous: an Amazon Echo speaker vs Echo brand outdoor-power
+# equipment ("ECHO 4605" chainsaw parts).  Only map to Amazon when the name
+# carries a device suffix (Echo Dot, Echo Show, ...).
+_ECHO_DEVICE_SUFFIXES = {
+    "dot", "show", "studio", "auto", "flex", "spot", "sub", "pop",
+    "glow", "frames", "buds", "alexa",
+}
+
+# "HP" preceded by a quantity is horsepower, not the HP brand
+# ("AGUJA MOTOR 9 - 13 HP" → not Hewlett-Packard).
+_HP_HORSEPOWER_RE = re.compile(r"\d[\d.,]*\s*hp\b", re.IGNORECASE)
 
 
 def _infer_brand_from_name(nombre: str) -> str | None:
@@ -636,8 +648,18 @@ def _infer_brand_from_name(nombre: str) -> str | None:
         return None
     import re
     nombre_lower = nombre.lower()
+
+    # "echo" solo → Amazon cuando hay sufijo de dispositivo (Echo Dot, Echo
+    # Show...).  Los repuestos ECHO de motosierras/desmalezadoras no son
+    # parlantes inteligentes.
+    if any(w in _ECHO_DEVICE_SUFFIXES for w in re.findall(r"\becho\s+(\w+)", nombre_lower)):
+        if "amazon" in _BRANDS_MAP:
+            return "amazon"
+
     # Use word boundaries to avoid false matches (e.g. "blu" matching "bluetooth")
     for brand_key in _BRANDS_MAP:
+        if brand_key == "hp" and _HP_HORSEPOWER_RE.search(nombre_lower):
+            continue
         pattern = r'\b' + re.escape(brand_key) + r'\b'
         if re.search(pattern, nombre_lower):
             return brand_key
@@ -818,6 +840,14 @@ def _create_driver() -> webdriver.Chrome:
 
 # ── Brand site search ────────────────────────────────────────────────────────
 
+# Selector genérico para marcas agregadas sin especificar uno (formulario
+# simple de la Admin UI). Es un superset de los selectores más comunes de
+# tarjetas de producto; el scoring posterior elige la mejor coincidencia.
+_GENERIC_RESULT_SELECTOR = (
+    "a[href*='product'], a[href*='/p/'], a[href*='MLA-'], a[href*='model'], "
+    ".product-card a, a[class*='product'], .s-result-item h2 a"
+)
+
 
 def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | None:
     """Search the brand's official site for a product and return the best result URL.
@@ -859,8 +889,8 @@ def _search_brand_site(marca: str, product_name: str, pid: int = 0) -> str | Non
 
     # ── Standard search-url strategy ─────────────────────────────────────
     search_tpl = entry.get("search_url", "")
-    selector = entry.get("result_selector", "")
-    if not search_tpl or not selector:
+    selector = entry.get("result_selector", "") or _GENERIC_RESULT_SELECTOR
+    if not search_tpl:
         return None
 
     # Clean the product name for search — remove generic descriptors,
@@ -2026,6 +2056,9 @@ def scrape_from_direct_url(url: str, product_id: int) -> dict | None:
     # Store source URL for validation
     result["url"] = url
 
+    # Normalize entity-coded / mojibake text before it reaches the proposal.
+    spec_extractors.normalize_product(result)
+
     # 4. Persist to DB
     _persist_scrape_result(product_id, result, source="manual_url", url=url)
 
@@ -2186,6 +2219,9 @@ def _scrape_pdf_datasheet(pdf_url: str, product_id: int) -> dict | None:
         )
 
     result["url"] = pdf_url
+
+    # Normalize entity-coded / mojibake text before it reaches the proposal.
+    spec_extractors.normalize_product(result)
 
     _persist_scrape_result(
         product_id, result, source="pdf_sitemap", url=pdf_url,

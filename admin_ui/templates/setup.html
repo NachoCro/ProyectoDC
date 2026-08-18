@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Primera configuración — Panel de la tienda</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .setup-wrap { max-width: 380px; margin: 10vh auto 0; padding: 0 24px; }
+    .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+    .setup-card h1 { font-size: 20px; margin: 0 0 4px; }
+    .setup-card .setup-sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+    .setup-error { background: #fee2e2; color: var(--red); border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; }
+    .setup-actions { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="setup-wrap">
+    <div class="setup-card">
+      <h1>Primera configuración</h1>
+      <p class="setup-sub">Creá el usuario administrador del panel.</p>
+
+      {% if error %}<div class="setup-error">{{ error }}</div>{% endif %}
+
+      <form method="post" class="settings-form">
+        <div class="settings-field">
+          <label for="usuario">Usuario</label>
+          <input id="usuario" name="usuario" autocomplete="username" required autofocus>
+        </div>
+        <div class="settings-field">
+          <label for="clave">Contraseña</label>
+          <input id="clave" name="clave" type="password" autocomplete="new-password" required>
+        </div>
+        <div class="settings-field">
+          <label for="clave2">Repetir contraseña</label>
+          <input id="clave2" name="clave2" type="password" autocomplete="new-password" required>
+        </div>
+        <div class="setup-actions">
+          <button class="btn btn--primary btn--lg" type="submit">Crear y entrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

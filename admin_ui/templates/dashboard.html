@@ -2,18 +2,27 @@
 {% block content %}
 
 <div class="dash">
-  <h1>Dashboard</h1>
+  <h1>Inicio</h1>
+
+  <div class="guide">
+    <span class="guide__icon">💡</span>
+    <div>
+      <p><strong>¿Qué veo acá?</strong> Los números de arriba muestran cuántos
+      productos de tu tienda están esperando que los revises. El trabajo
+      automático es el sistema que busca los datos de cada producto solo.</p>
+    </div>
+  </div>
 
   <div class="dash-layout">
     <div class="dash-left">
       <div class="dash-stats">
         <div class="stat-box stat-box--pending">
           <span class="stat-box__value">{{ pending }}</span>
-          <span class="stat-box__label">Pendientes</span>
+          <span class="stat-box__label">Productos por revisar</span>
         </div>
         <div class="stat-box stat-box--done">
           <span class="stat-box__value">{{ listos }}</span>
-          <span class="stat-box__label">Listos</span>
+          <span class="stat-box__label">Listos para vender</span>
         </div>
         <div class="stat-box stat-box--activate">
           <span class="stat-box__value">{{ para_activar }}</span>
@@ -21,13 +30,19 @@
         </div>
         <div class="stat-box stat-box--verified">
           <span class="stat-box__value">{{ activos }}</span>
-          <span class="stat-box__label">Activos verificados</span>
+          <span class="stat-box__label">Ya verificados</span>
         </div>
+      </div>
+
+      <div class="plan-banner">
+        <span class="plan-banner__label">Plan de hoy</span>
+        <span class="plan-banner__value">{{ plan_label }}</span>
+        <a class="plan-banner__edit" href="{{ url_for('settings') }}#plan">Cambiar</a>
       </div>
 
       <div class="daemon-panel">
         <div class="daemon-panel__header">
-          <span class="daemon-panel__title">Daemon</span>
+          <span class="daemon-panel__title">Trabajo automático</span>
           <span class="daemon-panel__status {% if daemon.running %}daemon-panel__status--running{% else %}daemon-panel__status--stopped{% endif %}"
                 id="daemonStatus">
             {% if daemon.running %}Activo{% else %}Detenido{% endif %}
@@ -37,11 +52,11 @@
         <div class="daemon-panel__info" id="daemonInfo">
           {% if daemon.running %}
           <div class="daemon-info-row">
-            <span class="daemon-info-label">Ciclo</span>
+            <span class="daemon-info-label">Vuelta de revisión</span>
             <span class="daemon-info-value" id="daemonCycle">{{ daemon.cycle }}</span>
           </div>
           <div class="daemon-info-row">
-            <span class="daemon-info-label">Intervalo</span>
+            <span class="daemon-info-label">Cada cuánto revisa</span>
             <span class="daemon-info-value" id="daemonInterval">{{ daemon.interval }}s</span>
           </div>
           <div class="daemon-info-row">
@@ -54,7 +69,7 @@
           </div>
           {% if daemon.last_result %}
           <div class="daemon-info-row">
-            <span class="daemon-info-label">Ultima verificacion</span>
+            <span class="daemon-info-label">Última revisión</span>
             <span class="daemon-info-value" id="daemonLastResult">
               {{ daemon.last_result.total }} productos, {{ daemon.last_result.complete }} completos
             </span>
@@ -69,25 +84,60 @@
             <input type="hidden" name="interval" value="{{ daemon.interval }}">
             <button type="submit" class="btn btn--danger btn--daemon" id="stopBtn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
-              Detener daemon
+              Detener trabajo automático
             </button>
           </form>
           {% else %}
           <form method="post" action="{{ url_for('start_daemon') }}" id="startDaemonForm" class="daemon-form">
             <div class="daemon-form__row">
-              <label for="interval">Intervalo (seg)</label>
+              <label for="interval">Revisar cada (seg)</label>
               <input type="number" id="interval" name="interval" value="{{ daemon.interval or 300 }}" min="10" max="86400" class="input input--sm">
             </div>
             <label class="daemon-form__row daemon-form__check">
               <input type="checkbox" name="check_inactive" value="1">
               Validar productos inactivos (listos para activar)
             </label>
+            <label class="daemon-form__row daemon-form__check">
+              <input type="checkbox" name="no_initial_pipeline" value="1" checked>
+              Iniciar sin extracción/enriquecimiento
+            </label>
+
             <button type="submit" class="btn btn--primary btn--daemon" id="startBtn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Iniciar daemon
+              Iniciar trabajo automático
             </button>
           </form>
           {% endif %}
+        </div>
+      </div>
+
+      <div class="daemon-panel pipeline-panel" id="pipelinePanel" style="display:none">
+        <div class="daemon-panel__header">
+          <span class="daemon-panel__title">Ejecución en curso</span>
+          <span class="pipeline-panel__status pipeline-panel__status--running" id="pipelineStatus">Ejecutando...</span>
+        </div>
+        <div class="daemon-panel__info">
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Fase</span>
+            <span class="daemon-info-value" id="pipelinePhase">-</span>
+          </div>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Producto</span>
+            <span class="daemon-info-value" id="pipelineProduct">-</span>
+          </div>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Progreso</span>
+            <span class="daemon-info-value" id="pipelineCount">-</span>
+          </div>
+          <div class="daemon-info-row">
+            <span class="daemon-info-label">Transcurrido</span>
+            <span class="daemon-info-value" id="pipelineElapsed">-</span>
+          </div>
+        </div>
+        <div class="pipeline-bar" id="pipelineBar">
+          <div class="pipeline-bar__track">
+            <div class="pipeline-bar__fill" id="pipelineFill" style="width:0%"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -98,15 +148,15 @@
           <span class="terminal__dot terminal__dot--red"></span>
           <span class="terminal__dot terminal__dot--yellow"></span>
           <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">Daemon</span>
+          <span class="terminal__title">Actividad</span>
         </div>
         <div class="terminal__body" id="terminalBody">
-          {% if daemon.running and daemon.logs %}
+          {% if daemon.logs %}
             {% for log in daemon.logs %}
             <div class="terminal__line {% if 'ERROR' in log.msg %}terminal__line--error{% elif 'completado' in log.msg %}terminal__line--ok{% elif 'Fase' in log.msg %}terminal__line--info{% endif %}">{{ log.msg }}</div>
             {% endfor %}
           {% else %}
-            <div class="terminal__line terminal__line--idle">Daemon no activo</div>
+            <div class="terminal__line terminal__line--idle">Trabajo automático detenido</div>
           {% endif %}
         </div>
       </div>
@@ -122,17 +172,16 @@
 
   function pollDaemonStatus() {
     clearTimeout(pollTimer);
-    fetch('/api/daemon-status')
+    fetch('/api/daemon-status', { cache: 'no-store' })
       .then(function(r) { return r.json(); })
       .then(function(state) {
         renderTerminal(state);
+        renderPipeline(state);
         updateDaemonInfo(state);
-        if (state.running) {
-          pollTimer = setTimeout(pollDaemonStatus, 2000);
-        }
+        pollTimer = setTimeout(pollDaemonStatus, 2000);
       })
       .catch(function() {
-        if (isDaemonRunning) pollTimer = setTimeout(pollDaemonStatus, 3000);
+        pollTimer = setTimeout(pollDaemonStatus, 3000);
       });
   }
 
@@ -159,6 +208,57 @@
     if (lastEl && state.last_result) {
       lastEl.textContent = state.last_result.total + ' productos, ' + state.last_result.complete + ' completos';
     }
+  }
+
+  function renderPipeline(state) {
+    var panel = document.getElementById('pipelinePanel');
+    if (!panel) return;
+    var pipe = state && state.pipeline;
+    if (!pipe || !pipe.started_at) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    var running = !!pipe.running;
+    var statusEl = document.getElementById('pipelineStatus');
+    statusEl.textContent = running ? 'Ejecutando...' : 'Completado';
+    statusEl.className = 'pipeline-panel__status ' + (running ? 'pipeline-panel__status--running' : 'pipeline-panel__status--done');
+
+    document.getElementById('pipelinePhase').textContent = pipe.phase || '-';
+    document.getElementById('pipelineProduct').textContent =
+      pipe.product_name ? (pipe.pid ? '#' + pipe.pid + ' ' : '') + pipe.product_name : '-';
+
+    var countEl = document.getElementById('pipelineCount');
+    var fill = document.getElementById('pipelineFill');
+    var bar = document.getElementById('pipelineBar');
+    if (pipe.total > 0) {
+      var pct = Math.min(100, Math.round((pipe.current || 0) / pipe.total * 100));
+      countEl.textContent = (pipe.current || 0) + ' / ' + pipe.total + ' (' + pct + '%)';
+      fill.style.width = pct + '%';
+      bar.classList.remove('pipeline-bar--indeterminate');
+    } else {
+      countEl.textContent = running ? '...' : '-';
+      fill.style.width = running ? '40%' : '0%';
+      if (running) bar.classList.add('pipeline-bar--indeterminate');
+      else bar.classList.remove('pipeline-bar--indeterminate');
+    }
+
+    var elapsed = 0;
+    if (pipe.started_at) {
+      var end = running ? Date.now() / 1000 : (pipe.finished_at || Date.now() / 1000);
+      elapsed = Math.max(0, end - pipe.started_at);
+    }
+    document.getElementById('pipelineElapsed').textContent = fmtDuration(elapsed);
+  }
+
+  function fmtDuration(secs) {
+    secs = Math.round(secs || 0);
+    if (secs < 60) return secs + 's';
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    if (m < 60) return m + 'm ' + s + 's';
+    var h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
   }
 
   function renderTerminal(state) {
@@ -239,9 +339,7 @@
     });
   }
 
-  if (isDaemonRunning) {
-    pollDaemonStatus();
-  }
+  pollDaemonStatus();
 })();
 </script>
 {% endblock %}

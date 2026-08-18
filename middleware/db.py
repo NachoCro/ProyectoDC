@@ -154,6 +154,17 @@ def _ensure_schema() -> None:
                 )"""
             )
 
+            # ── Migration 009: usuarios (login para la Admin UI) ────────
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS usuarios (
+                    usuario       TEXT    PRIMARY KEY,
+                    password_hash TEXT    NOT NULL,
+                    rol           TEXT    NOT NULL DEFAULT 'operador'
+                                       CHECK (rol IN ('admin', 'operador', 'lectura')),
+                    creado        TEXT    NOT NULL DEFAULT (datetime('now'))
+                )"""
+            )
+
             # ── Seed data if empty ──────────────────────────────────────
             cat_count = conn.execute("SELECT COUNT(*) FROM categorias").fetchone()[0]
             if cat_count == 0:
